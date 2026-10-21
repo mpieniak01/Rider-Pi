@@ -28,6 +28,7 @@ _GROUPS = {
         1,
         ("/api/navigation/config", "/api/navigation/status", "/api/navigation/trial", "/api/navigation/journey"),
     ),
+    "rider.transport": (1, ("/api/v1/transport/identity",)),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),
     "rider.catalog": (2, ("/api/logic/catalog",)),
     TASKS_CONTRACT: (2, ("/api/logic/features", "/api/logic/state", "/api/logic/summary", "/api/logic/feature/<name>")),

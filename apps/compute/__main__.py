@@ -10,6 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
+from common.compute_url import transport_options
 from services.core.cli_files import write_output
 
 from .client import ComputeClient, ComputeError
@@ -57,6 +58,7 @@ def _run_cli_request(args, selection):
         device_session(),
         selection['id'],
         client_id='cli',
+        **transport_options(selection),
     ) as client:
         if args.action == 'capabilities':
             result = client.capabilities()

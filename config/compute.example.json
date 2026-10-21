@@ -6,6 +6,7 @@
   "executors": {
     "venom": {
       "url": "https://venom-host:8443",
+      "transport_profile": "secure",
       "token_env": "RIDER_COMPUTE_TOKEN",
       "tasks": ["text.respond", "audio.transcribe", "audio.synthesize", "vision.describe", "conversation.respond"]
     }

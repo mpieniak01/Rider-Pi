@@ -26,11 +26,78 @@ This saves configuration; it does not start a goal. Use
 orchestration lock. PC heartbeat does not change selection/address, and a Venom
 failure does not start local models.
 
-Authenticated transport requires HTTPS with certificate verification or an
-HTTP loopback endpoint behind SSH (`localhost`, `127.0.0.1` or `[::1]`). LAN HTTP
-is rejected by the transport client. Configure TLS/tunnels separately before
-hardware acceptance. The URL accepts a host base or `/api/v1/rider/compute`.
-Tunnel ports are installation settings, not additional public service ports.
+The default `transport_profile: "secure"` requires verified HTTPS or an HTTP
+loopback endpoint behind SSH (`localhost`, `127.0.0.1` or `[::1]`). Omitting the
+field in an existing file preserves this policy without migration. The URL
+accepts a host base or `/api/v1/rider/compute`; tunnel ports remain installation
+settings.
+
+Explicit `trusted_lan` permits HTTP for the configured URL and requires the
+Venom `expected_peer_id` (32 lowercase hexadecimal characters). The operator
+first reads and confirms `GET /api/v1/transport/identity` on that installation.
+Identity is public and does not provide cryptographic authentication. The
+bearer token still comes from the private service environment. Stop goals first:
+
+```sh
+python3 -m services.compute_config --url http://venom-host:3300 --device-id robot \
+  --transport-profile trusted_lan --expected-peer-id <confirmed_Venom_peer_id>
+```
+
+This saves the profile without selecting an executor or starting hardware.
+Use a canonical hostname and LAN port resolvable from every client. `.local`
+is optional, never assumed; an internal WSL IP is unsuitable. DHCP changes do
+not rewrite the URL or executor selection. Reopen a browser tab using the name
+if its old numeric IP stops working.
+
+Before credentials, the client checks protocol version 1, `service_role: "venom"`
+and the expected peer_id on the same TCP socket. Name/port failures, timeouts,
+identity mismatch, redirects and invalid identity APIs prevent the token from
+being sent. The Venom server/proxy must retain the connection after identity;
+`Connection: close` produces `transport_identity_connection_closed`, without
+sending credentials on an unverified replacement socket. Compute, navigation
+and passive stream preflight use this policy.
+
+A later active request rebuilds the connection from the canonical hostname.
+One shared gate per peer in a process bounds reconnect backoff to
+1/2/4/8/16/30 seconds with small jitter. There is no timer, network scan or new
+service. The OS resolver owns DNS TTL; the client retains no IP cache and
+renews sockets after two idle seconds or thirty active seconds. Existing loop
+cadences stay unchanged. A new generation invalidates old sessions and pending
+results; POST is never replayed. An active goal may exit on failure and require
+an explicit restart. Lost leases cannot resume recording, capture, playback or
+motion authority.
+
+Local snapshots may include `transport.state`, `error`, `generation` and
+`retry_after_s`. Diagnose in order: Pi name resolution, LAN port, identity,
+profile/peer_id, configured token and capabilities API. Do not replace a token
+for `transport_identity_mismatch` or `transport_resolve_failed`. To roll back,
+stop goals and explicitly restore the prior profile/URL; new jobs get new
+sessions.
+
+## Optional keepalive for Pi API reads
+
+The Pi API server retains its existing connection-close behavior by default.
+`RIDER_API_HTTP_KEEPALIVE=1` in the API service's existing private environment
+enables bounded HTTP/1.1 only on the qualified runtime: Python 3.9 with
+Werkzeug 1.0.1. An absent flag, `0`, `false` or `off` preserves old behavior.
+Explicit opt-in on another version stops server startup with
+`http_keepalive_runtime_unsupported`; an invalid value produces
+`http_keepalive_flag_invalid`. No new dependency is required.
+
+Only GET/HEAD without a body, Transfer-Encoding or Expect can reuse a
+connection. Content-Length must be absent or exactly one `Content-Length: 0`.
+POST, PUT, DELETE and other methods, request bodies, ambiguous headers,
+HTTP/1.0 and `Connection: close` always close it. An unread rejected request
+body is never interpreted as the next request. `Expect: 100-continue` retains
+one interim response and closes the connection after the final response.
+
+Known-length responses such as JSON and single JPEGs can share a TCP
+connection. Unknown-length MJPEG/SSE remain close-delimited under Werkzeug's
+rules. Every client or server close decision is honored. The 10-second socket
+timeout bounds idle reads and blocked I/O; it does not alter command TTL or
+control deadlines. The option applies independently of secure/trusted_lan.
+Activation or rollback requires the usual API deployment/restart and separate
+read-only acceptance on Pi. It does not start goals, hardware or motion.
 
 ## Compute goals
 

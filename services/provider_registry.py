@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from common.compute_url import validate_transport_profile
 from common.provider_state import normalize_domain_state
 
 try:
@@ -337,8 +338,17 @@ def get_pc_base_url() -> str:
         return _peer_url(_pc_base_url or DEFAULT_PC_BASE_URL)
 
 
+def get_pc_transport_options():
+    """Legacy routing has its own explicit binding; compute selection stays authoritative."""
+    profile = os.getenv("PROVIDER_PC_TRANSPORT_PROFILE", "secure")
+    peer_id = os.getenv("PROVIDER_PC_EXPECTED_PEER_ID") or None
+    validate_transport_profile(profile, peer_id)
+    return {"transport_profile": profile, "expected_peer_id": peer_id}
+
+
 def _peer_url(base_url: str) -> str:
-    """Remote providers require TLS; HTTP remains local to an encrypted tunnel/worker."""
+    """Legacy HTTP uses the same explicit peer profile as current compute."""
+    options = get_pc_transport_options()
     if not isinstance(base_url, str) or not base_url or any(char.isspace() or ord(char) < 32 for char in base_url):
         raise ValueError("invalid_peer_url")
     parsed = urlsplit(base_url if "://" in base_url else "//" + base_url)
@@ -349,7 +359,9 @@ def _peer_url(base_url: str) -> str:
     except ValueError:
         loopback = False
     scheme = parsed.scheme or ("http" if loopback else "https")
-    if scheme not in {"http", "https"} or scheme == "http" and not loopback:
+    if scheme not in {"http", "https"} or (
+        scheme == "http" and not loopback and options["transport_profile"] != "trusted_lan"
+    ):
         raise ValueError("remote_provider_requires_https")
     if parsed.port is not None and not 1 <= parsed.port <= 65535:
         raise ValueError("invalid_peer_port")
@@ -393,6 +405,9 @@ def record_pc_heartbeat(base_url: str, payload: dict) -> str:
         raise ValueError("invalid peer capabilities")
     global _pc_base_url
     with _state_lock:
+        if get_pc_transport_options()["transport_profile"] == "trusted_lan" and target != _pc_base_url:
+            # A heartbeat cannot rebind a configured LAN peer or replace its hostname with an IP.
+            raise ValueError("legacy_peer_binding_mismatch")
         previous_url, previous_health = _pc_base_url, deepcopy(_pc_health)
         _pc_base_url = target
         _pc_health.update(

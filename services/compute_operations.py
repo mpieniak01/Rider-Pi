@@ -6,6 +6,7 @@ import uuid
 
 from apps.compute.client import ComputeClient, ComputeError
 from apps.compute.runners import device_session
+from common.compute_url import transport_options
 from services import compute_config
 
 _panel_lock = threading.Lock()
@@ -30,6 +31,7 @@ def execute(task, payload, content_type, params=None, *, client_factory=ComputeC
             device_session(),
             selected["id"],
             client_id="panel",
+            **transport_options(selected),
         )
         job = client.submit(
             task,

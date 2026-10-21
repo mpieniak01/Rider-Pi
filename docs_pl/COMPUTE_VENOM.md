@@ -28,11 +28,50 @@ Konfiguracja i awaryjny CLI korzystają z tej samej domeny:
 python3 -m services.compute_config --url https://venom-host:8443 --device-id robot
 ```
 
-Token wymaga HTTPS z weryfikowanym certyfikatem albo lokalnego endpointu
-`http://localhost:<port>`, `http://127.0.0.1:<port>` lub `http://[::1]:<port>`
-prowadzącego przez tunel SSH. HTTP po sieci lokalnej jest odrzucane także przez
-klienta transportu. TLS/tunel na urządzeniu pozostaje do przygotowania przed
-odbiorem sprzętowym; ta zmiana nie konfiguruje go automatycznie.
+Domyślny `transport_profile: "secure"` wymaga HTTPS z weryfikowanym
+certyfikatem albo lokalnego endpointu `http://localhost:<port>`,
+`http://127.0.0.1:<port>` lub `http://[::1]:<port>` za tunelem SSH. Brak pola
+w istniejącym pliku zachowuje ten profil, bez automatycznej migracji.
+
+Jawny `trusted_lan` dopuszcza HTTP wyłącznie dla skonfigurowanego URL i wymaga
+`expected_peer_id` Venoma (32 małe znaki szesnastkowe). Najpierw operator
+odczytuje i potwierdza `GET /api/v1/transport/identity` z instalacji Venoma;
+tożsamość nie jest sekretem ani kryptograficznym uwierzytelnieniem. Token nadal
+pochodzi z prywatnego środowiska usługi. Przykład, po zatrzymaniu celów:
+
+```sh
+python3 -m services.compute_config --url http://venom-host:3300 --device-id robot \
+  --transport-profile trusted_lan --expected-peer-id <potwierdzony_peer_id_Venoma>
+```
+
+Polecenie zapisuje profil, lecz nie wybiera wykonawcy ani nie uruchamia sprzętu.
+Zapisz nazwę działającą w DNS LAN ze wszystkich klientów; sufiks `.local` nie
+jest wymagany ani zakładany. URL z nazwą i portem pozostaje kanoniczny po zmianie
+DHCP. Nie wpisuj adresu wewnętrznego WSL. Otwarta karta pod starym IP wymaga
+ponownego otwarcia panelu przez nazwę.
+
+Przed poświadczeniami klient sprawdza wersję 1, `service_role: "venom"` i
+oczekiwany peer_id na tym samym TCP. Błąd nazwy/portu, timeout, obca tożsamość,
+redirect lub niepoprawne API blokują wysłanie tokenu. Serwer/proxy Venoma musi
+utrzymać połączenie po identity; `Connection: close` daje jawny błąd
+`transport_identity_connection_closed`, bez wysyłania tokenu na nowy socket.
+Dotyczy to compute, nawigacji i pasywnego preflight strumienia.
+
+Po błędzie kolejna aktywna próba odtwarza połączenie z nazwy. W procesie jeden
+wspólny gate danego peera ogranicza reconnect: 1/2/4/8/16/30 s z małym jitterem,
+bez timera, skanowania sieci ani nowej usługi. Systemowy resolver zarządza TTL;
+klient nie przechowuje IP, a połączenie odnawia po 2 s bezczynności lub 30 s
+aktywności. Częstotliwość istniejących pętli pozostaje bez zmian. Nowa generacja
+unieważnia starą sesję i oczekujące wyniki; klient nie ponawia POST. Aktywny cel
+może zakończyć się błędem i wymagać jawnego ponownego uruchomienia. Nie wznawia
+mikrofonu, kamery, odtwarzania ani uprawnień ruchu z utraconego lease.
+
+Lokalne snapshoty mogą zawierać `transport.state`, `error`, `generation` i
+`retry_after_s`. Przy diagnozie sprawdzaj kolejno nazwę z Pi, port LAN, identity,
+zgodność profilu/peer_id, obecność tokenu i API capabilities. Nie podmieniaj
+tokenu przy `transport_identity_mismatch` ani `transport_resolve_failed`.
+Rollback wymaga zatrzymania celów i jawnego zapisania poprzedniego profilu/URL;
+nowe zadania korzystają z nowych sesji.
 
 URL może wskazywać bazę hosta albo dokładny `/api/v1/rider/compute`. Dla
 dwukierunkowego tunelu uruchamianego z Venoma przykładowy URL na Pi to
@@ -46,6 +85,33 @@ nowe obliczenia zdalne. Przed zmianą zatrzymaj cele obliczeniowe; 409 oznacza
 konflikt rewizji albo aktywny cel. CLI i API używają wspólnej blokady orkiestracji.
 Starsza konfiguracja lokalna/PC pozostaje do jawnego powrotu wersji. Heartbeat PC
 nie zmienia adresu ani wyboru Venoma. Awaria Venoma nie uruchamia lokalnych modeli.
+
+## Opcjonalny keepalive odczytów API Pi
+
+Serwer API Pi zachowuje domyślnie dotychczasowe zamykanie połączeń.
+`RIDER_API_HTTP_KEEPALIVE=1` w istniejącym prywatnym środowisku usługi API
+włącza ograniczone HTTP/1.1 wyłącznie dla zakwalifikowanego runtime:
+Python 3.9 z Werkzeug 1.0.1. Brak flagi, `0`, `false` lub `off` pozostawia
+stare zachowanie. Jawne włączenie na innej wersji zatrzymuje start serwera
+z `http_keepalive_runtime_unsupported`; niepoprawna wartość daje
+`http_keepalive_flag_invalid`. Opcja nie wymaga nowych zależności.
+
+Połączenie może zostać ponownie użyte tylko po GET/HEAD bez body,
+bez Transfer-Encoding i Expect, z jednoznacznym brakiem Content-Length
+albo pojedynczym `Content-Length: 0`. POST, PUT, DELETE i pozostałe metody,
+body, niejednoznaczne nagłówki, HTTP/1.0 oraz żądanie `Connection: close`
+zawsze zamykają połączenie. Nieodczytane body odrzuconego żądania nie jest
+przetwarzane jako następne żądanie. `Expect: 100-continue` zachowuje jedną
+odpowiedź tymczasową, a odpowiedź końcowa zamyka połączenie.
+
+Odpowiedzi o znanej długości, np. JSON i pojedynczy JPEG, mogą korzystać
+z tego samego TCP. MJPEG/SSE bez znanej długości nadal kończą się zamknięciem
+połączenia według reguł Werkzeug. Decyzja klienta lub serwera o zamknięciu
+jest zawsze zachowana. Timeout socketu 10 s ogranicza bezczynny odczyt
+oraz zablokowane I/O; nie zmienia TTL poleceń ani terminów sterowania.
+Opcja działa niezależnie od profilu secure/trusted_lan. Włączenie i wyłączenie
+wymaga zwykłego wdrożenia/restartu API oraz osobnego odbioru odczytów na Pi.
+Nie uruchamia celów, sprzętu ani ruchu.
 
 ## Cele i przepływy
 

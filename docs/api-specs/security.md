@@ -4,6 +4,22 @@ The shared guard runs before handlers in the main API, compatibility app,
 motion bridge and both voice workers. It does not start services or change
 operator consent, command generations, TTL or STOP semantics.
 
+## Persistent transport identity and LAN hostname
+
+`GET /api/v1/transport/identity` returns only `protocol_version: 1`, a persistent
+UUID-hex `peer_id` and `service_role: "rider_pi"`. This passive read starts no
+camera, audio, model or motion. `RIDER_TRANSPORT_IDENTITY_FILE` defaults to
+`data/transport_identity.json`, created atomically with mode `0600`. Configure
+a stable data path when releases change the application directory. Do not copy
+it between robots. Corrupt identity is never silently regenerated: the API
+returns 503 `transport_identity_unavailable` until the operator repairs storage.
+
+Add a custom panel hostname explicitly to `RIDER_TRUSTED_HOSTS`, for example
+`robot.example`. Its own origin and port remain allowed; additional origins
+still require complete entries in `RIDER_ALLOWED_ORIGINS`. LAN HTTP enables
+neither CORS `*` nor administrative access. Outbound pairing is documented in
+the [Venom guide](../COMPUTE_VENOM.md). Identity and status contain no tokens.
+
 ## Origin and content type
 
 Browsers may use the server's own origin by default. Explicitly configure any

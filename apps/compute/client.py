@@ -17,6 +17,9 @@ from typing import Any
 
 from common.compute_url import validate_compute_url
 
+from .errors import ComputeError
+from .lan_transport import PeerHTTPTransport
+
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 CONVERSATION_TASK = 'conversation.respond'
 TRANSCRIBE_TASK = 'audio.transcribe'
@@ -33,15 +36,6 @@ TASK_TYPES = {
 }
 TERMINAL = {'succeeded', 'failed', 'cancelled', 'expired', 'superseded'}
 MAX_BYTES = 2 * 1024 * 1024
-
-
-class ComputeError(RuntimeError):
-    """Stable diagnostic code; never includes credentials or raw response text."""
-
-    def __init__(self, code: str, status: int = 0) -> None:
-        self.code = code
-        self.status = status
-        super().__init__(code)
 
 
 def _identifier(value: Any) -> str:
@@ -77,9 +71,16 @@ def validate_wav(data: bytes) -> int:
 class HTTPTransport:
     """Short-idle keepalive connection; every request happens exactly once."""
 
-    def __init__(self, base_url: str, *, clock=time.monotonic) -> None:
+    def __init__(
+        self, base_url: str, *, clock=time.monotonic, transport_profile="secure", expected_peer_id=None
+    ) -> None:
         try:
-            parsed = validate_compute_url(base_url, allow_api_path=True)
+            parsed = validate_compute_url(
+                base_url,
+                allow_api_path=True,
+                transport_profile=transport_profile,
+                expected_peer_id=expected_peer_id,
+            )
         except ValueError as exc:
             raise ComputeError(str(exc), 400) from None
         self.host, self.port, self.secure = parsed.hostname, parsed.port, parsed.scheme == 'https'
@@ -88,8 +89,40 @@ class HTTPTransport:
         self._last_response_at = None
         self.lock = threading.Lock()
         self.closed = False
+        self.peer = (
+            PeerHTTPTransport(
+                base_url,
+                transport_profile=transport_profile,
+                expected_peer_id=expected_peer_id,
+                clock=clock,
+            )
+            if expected_peer_id
+            else None
+        )
+
+    @property
+    def generation(self):
+        return self.peer.generation if self.peer is not None else None
+
+    def prepare(self, timeout=2.0):
+        return self.peer.prepare(timeout) if self.peer is not None else None
+
+    def request_bound(self, method, path, headers, body, timeout, *, generation=None):
+        if self.peer is not None:
+            return self.peer.request(
+                method,
+                '/api/v1/rider/compute' + path,
+                headers,
+                body,
+                timeout,
+                max_bytes=MAX_BYTES,
+                generation=generation,
+            )
+        return self.request(method, path, headers, body, timeout)
 
     def request(self, method: str, path: str, headers: dict, body: bytes, timeout: float) -> tuple:
+        if self.peer is not None:
+            return self.request_bound(method, path, headers, body, timeout)
         with self.lock:
             if self.closed:
                 raise ComputeError('compute_client_closed')
@@ -122,6 +155,8 @@ class HTTPTransport:
 
     def close(self) -> None:
         self.closed = True
+        if self.peer is not None:
+            self.peer.close()
         if self.connection is not None:
             self.connection.close()
             self.connection = None
@@ -146,6 +181,8 @@ class ComputeClient:
         executor_id: str = 'venom',
         *,
         client_id: str = 'cli',
+        transport_profile="secure",
+        expected_peer_id=None,
         transport=None,
         clock=time.monotonic,
         wall_clock=time.time,
@@ -161,7 +198,13 @@ class ComputeClient:
         if not isinstance(token, str) or not token or len(token) > 4096 or '\r' in token or '\n' in token:
             raise ComputeError('compute_token_missing_or_invalid')
         self._headers = {'Authorization': 'Bearer ' + token, 'X-Rider-Device': self.device_id}
-        self._transport = transport or HTTPTransport(base_url)
+        self._transport = transport or HTTPTransport(
+            base_url,
+            clock=clock,
+            transport_profile=transport_profile,
+            expected_peer_id=expected_peer_id,
+        )
+        self._lease_generation = None
         self._clock, self._wall_clock, self._sleep = clock, wall_clock, sleeper
         self._lease: dict | None = None
         self._jobs: dict[str, PendingJob] = {}
@@ -178,9 +221,18 @@ class ComputeClient:
             if self.client_id == 'voice' and method == 'POST' and path == '/jobs' and task == TRANSCRIBE_TASK
             else 2.0
         )
-        status, response_headers, data = self._transport.request(
-            method, path, {**self._headers, **(headers or {})}, body, max(0.01, min(timeout, limit))
-        )
+        args = (method, path, {**self._headers, **(headers or {})}, body, max(0.01, min(timeout, limit)))
+        try:
+            bound = getattr(self._transport, 'request_bound', None)
+            status, response_headers, data = (
+                bound(*args, generation=self._lease_generation) if bound is not None else self._transport.request(*args)
+            )
+        except ComputeError:
+            if getattr(self._transport, 'peer', None) is not None:
+                # Reconnect never resurrects a lease or an outstanding input.
+                self._lease = self._lease_generation = None
+                self._jobs.clear()
+            raise
         if len(data) > MAX_BYTES:
             raise ComputeError('compute_response_too_large')
         if 200 <= status < 300:
@@ -236,6 +288,19 @@ class ComputeClient:
         }
 
     def _session(self) -> dict:
+        prepare = getattr(self._transport, 'prepare', None)
+        if prepare is not None:
+            try:
+                generation = prepare()
+            except ComputeError:
+                if getattr(self._transport, 'peer', None) is not None:
+                    self._lease = self._lease_generation = None
+                    self._jobs.clear()
+                raise
+            if generation != self._lease_generation:
+                self._lease = None
+                self._jobs.clear()
+                self._lease_generation = None
         if self._lease is None:
             capabilities = self.capabilities()
             lease = self._json(
@@ -265,6 +330,7 @@ class ComputeClient:
                 raise ComputeError('stale_compute_session', 409)
             _identifier(lease.get('session_id'))
             self._lease = lease
+            self._lease_generation = getattr(self._transport, 'generation', None)
         return self._lease
 
     def _validate_submission_input(self, task, data, content_type, metadata, params):
@@ -497,13 +563,12 @@ class ComputeClient:
         try:
             if self._lease is not None:
                 with contextlib.suppress(ComputeError):
-                    self._transport.request(
-                        'DELETE',
-                        '/sessions/' + self._lease['session_id'],
-                        self._headers,
-                        b'',
-                        0.5,
-                    )
+                    bound = getattr(self._transport, 'request_bound', None)
+                    args = ('DELETE', '/sessions/' + self._lease['session_id'], self._headers, b'', 0.5)
+                    if bound is not None:
+                        bound(*args, generation=self._lease_generation)
+                    else:
+                        self._transport.request(*args)
         finally:
             self._closed = True
             self._jobs.clear()
