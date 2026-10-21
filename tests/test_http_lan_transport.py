@@ -227,7 +227,8 @@ def test_identity_precedes_token_on_the_same_socket(lan):
         rows = lan.states[0]["rows"]
         assert [row[2] for row in rows] == [lan_transport.IDENTITY_PATH, "/api/v1/rider/compute/capabilities"]
         assert rows[0][0] == rows[1][0]
-        assert "Authorization" not in rows[0][3] and "X-Rider-Device" not in rows[0][3]
+        assert "Authorization" not in rows[0][3]
+        assert "X-Rider-Device" not in rows[0][3]
         assert rows[1][3]["Authorization"] == "Bearer fixture-token"
         assert transport.peer.connection.auto_open == 0
     finally:
@@ -376,7 +377,8 @@ def test_old_job_is_dropped_on_generation_change_and_never_replayed(lan):
         lan.clock.sleep(2)
         with pytest.raises(ComputeError, match="transport_generation_changed"):
             client.result(job)
-        assert not client._jobs and client._lease is None
+        assert not client._jobs
+        assert client._lease is None
         assert [row[2] for row in lan.states[1]["rows"]] == [lan_transport.IDENTITY_PATH]
         with pytest.raises(ComputeError, match="stale_compute_sequence"):
             submit(client)
@@ -408,8 +410,9 @@ def test_navigation_reconnect_drops_current_frame_and_keeps_no_authority(lan):
         assert json.load(transport.open(req(), timeout=1))["action"] == "stop"
         lan.address[0] = "127.0.0.2"
         lan.clock.sleep(2)
+        request = req()
         with pytest.raises(ComputeError, match="transport_generation_changed"):
-            transport.open(req(), timeout=1)
+            transport.open(request, timeout=1)
         assert len(lan.states[1]["rows"]) == 1
         assert json.load(transport.open(req(), timeout=1))["action"] == "stop"
         assert transport.peer.requests == 2
@@ -469,7 +472,8 @@ def test_lost_post_ack_is_not_replayed_or_resurrected_after_recovery(lan):
     try:
         with pytest.raises(ComputeError, match="transport_connect_failed"):
             submit(client)
-        assert not client._jobs and client._lease is None
+        assert not client._jobs
+        assert client._lease is None
         assert len([row for row in lan.states[0]["rows"] if row[1:3] == ("POST", "/api/v1/rider/compute/jobs")]) == 1
         assert not any(row[1] == "DELETE" for row in lan.states[0]["rows"])
         lan.clock.sleep(31)

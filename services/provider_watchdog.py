@@ -50,6 +50,7 @@ def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
 
     options = registry.get_pc_transport_options()
     if options["expected_peer_id"]:
+        from apps.compute.errors import ComputeError
         from apps.compute.lan_transport import PeerHTTPTransport
 
         parsed = urlsplit(base_url)
@@ -65,6 +66,8 @@ def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
             )
             if status != 200:
                 raise ValueError("legacy_peer_capabilities_unavailable")
+        except ComputeError as exc:
+            raise urllib.error.URLError(exc.code) from None
         finally:
             transport.close()
     else:

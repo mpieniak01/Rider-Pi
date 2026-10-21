@@ -78,12 +78,7 @@ class NavigationHTTPTransport:
             raise ComputeError("navigation_transport_target_invalid")
         return parsed
 
-    def open(self, request, *, timeout):
-        if self.closed:
-            raise ComputeError("navigation_transport_closed")
-        parsed = self._validated_target(request)
-        if self.peer is not None:
-            return self._open_peer(request, parsed, timeout)
+    def _prepare_connection(self, parsed, timeout):
         if self.last_response is not None and self.clock() - self.last_response >= 2.0:
             self._discard()
         if self.connection is None:
@@ -94,6 +89,15 @@ class NavigationHTTPTransport:
         connection.timeout = timeout
         if connection.sock is not None:
             connection.sock.settimeout(timeout)
+        return connection
+
+    def open(self, request, *, timeout):
+        if self.closed:
+            raise ComputeError("navigation_transport_closed")
+        parsed = self._validated_target(request)
+        if self.peer is not None:
+            return self._open_peer(request, parsed, timeout)
+        connection = self._prepare_connection(parsed, timeout)
         try:
             self.requests += 1
             connection.request("POST", parsed.path, body=request.data, headers=dict(request.header_items()))

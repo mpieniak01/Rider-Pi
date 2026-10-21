@@ -30,9 +30,11 @@ def test_identity_is_persistent_private_and_distinct_from_boot(identity_file, mo
     monkeypatch.setenv("RIDER_DEVICE_ID", "other-device")
     second = transport_identity.identity()
     assert second == first
-    assert len(first["peer_id"]) == 32 and int(first["peer_id"], 16) > 0
+    assert len(first["peer_id"]) == 32
+    assert int(first["peer_id"], 16) > 0
     assert set(first) == {"peer_id", "protocol_version", "service_role"}
-    assert first["protocol_version"] == 1 and first["service_role"] == "rider_pi"
+    assert first["protocol_version"] == 1
+    assert first["service_role"] == "rider_pi"
     assert identity_file.stat().st_mode & 0o777 == 0o600
 
 

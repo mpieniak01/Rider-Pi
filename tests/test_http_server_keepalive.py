@@ -119,14 +119,17 @@ def test_finite_gets_preserve_json_and_honor_writer_close_decisions(wire):
             connection.request("GET", "/json")
             response = connection.getresponse()
             closed.append(response.will_close)
-            assert response.status == 200 and json.loads(response.read()) == {"ok": True}
+            assert response.status == 200
+            assert json.loads(response.read()) == {"ok": True}
         assert records["parsed"] == [("GET", False, False)] * 3
         peers = {row[0] for row in records["requests"]}
         if metadata.version("werkzeug") == "1.0.1":
-            assert closed == [False] * 3 and len(peers) == 1
+            assert closed == [False] * 3
+            assert len(peers) == 1
         else:
             # Modern Werkzeug's unconditional close must never be undone.
-            assert closed == [True] * 3 and len(peers) == 3
+            assert closed == [True] * 3
+            assert len(peers) == 3
     finally:
         connection.close()
 
@@ -189,7 +192,8 @@ def test_legacy_or_ambiguous_reads_are_explicitly_closed(wire, version, headers)
         connection.sendall(request)
         response = http.client.HTTPResponse(connection)
         response.begin()
-        assert response.will_close and json.loads(response.read()) == {"ok": True}
+        assert response.will_close
+        assert json.loads(response.read()) == {"ok": True}
     assert records["parsed"][0] == ("GET", True, True)
 
 
@@ -237,7 +241,8 @@ def test_unknown_length_multipart_stays_close_delimited_and_byte_exact(wire):
     try:
         connection.request("GET", "/stream")
         response = connection.getresponse()
-        assert response.status == 200 and response.will_close
+        assert response.status == 200
+        assert response.will_close
         assert response.headers["Content-Type"].startswith("multipart/x-mixed-replace")
         assert response.read() == media
     finally:
@@ -258,5 +263,6 @@ def test_application_close_header_is_honored(wire):
         connection.sendall(b"GET /writer-close HTTP/1.1\r\nHost: localhost\r\n\r\n")
         response = http.client.HTTPResponse(connection)
         response.begin()
-        assert response.will_close and json.loads(response.read()) == {"ok": True}
+        assert response.will_close
+        assert json.loads(response.read()) == {"ok": True}
         assert connection.recv(1) == b""

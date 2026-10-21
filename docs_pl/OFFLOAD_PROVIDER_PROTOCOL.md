@@ -8,6 +8,11 @@ HTTP, operator ustawia `PROVIDER_PC_TRANSPORT_PROFILE=trusted_lan` i
 nie może zmienić tak powiązanego URL; nie zmienia również rewizji ani wyboru
 compute. Nowe przepływy używają [jednej konfiguracji compute](COMPUTE_VENOM.md).
 
+Błędy żądania LAN mają tę samą klasyfikację `offline` / `pc_unreachable`
+co błędy sieci urllib. Błędy konfiguracji transportu i niepoprawne capabilities
+pozostają `error` / `pc_error`; żadna z tych klasyfikacji nie zmienia wyboru
+wykonawcy ani żądanego routingu domen.
+
 > Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne; Pi waliduje odpowiedzi i zachowuje kontrolę wykonania ruchu. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
 
 Jedyna aktualna referencja kontraktu pomiędzy urządzeniem Rider-Pi a towarzyszącym stosem Rider-PC.  

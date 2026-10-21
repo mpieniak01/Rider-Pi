@@ -8,6 +8,11 @@ Venom over HTTP, set `PROVIDER_PC_TRANSPORT_PROFILE=trusted_lan`,
 cannot rebind that URL or alter the compute revision/selection. New flows use
 the [single compute configuration](COMPUTE_VENOM.md).
 
+LAN request failures use the same `offline` / `pc_unreachable` classification
+as urllib network failures. Transport configuration errors and invalid
+capabilities remain `error` / `pc_error`; neither classification changes the
+configured executor or requested domain routing.
+
 > Rider-Pi retains hardware execution and local applications. Rider-PC provides operator controls and additional AI processing. The optional paired Venom module supplies compute and bounded navigation decisions; Pi validates replies and retains motion authority. Project milestones describe direction, not verified deployment status.
 
 Single source of truth for the contract between the Rider-Pi device and the Rider-PC companion stack.  
