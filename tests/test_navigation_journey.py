@@ -98,8 +98,9 @@ def test_old_executor_capability_cannot_start_journey(journey):
 def test_trial_and_journey_share_replay_journal(journey):
     world, starter, body = journey
     starter.start(body)
+    replay = world.body(journey_version=1, operator_control_version=1, panel_id="operator")
     with pytest.raises(TrialError, match="navigation_trial_replay"):
-        starter.start(world.body(journey_version=1, operator_control_version=1, panel_id="operator"))
+        starter.start(replay)
     assert sum(row["action"] == "arm" for row in world.commands) == 1
 
 

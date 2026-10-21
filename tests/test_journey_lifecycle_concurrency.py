@@ -48,7 +48,8 @@ def test_main_and_watchdog_retire_journey_once_without_closing_warm_producer(iso
     resume.set()
     main.join(2)
     watch.join(2)
-    assert not main.is_alive() and not watch.is_alive()
+    assert not main.is_alive()
+    assert not watch.is_alive()
     assert errors == []
     assert not raced
     assert not instance.closed.is_set()
@@ -86,7 +87,8 @@ def test_status_waits_for_complete_lease_generation_transition(isolated, monkeyp
     resume.set()
     main.join(2)
     observer.join(2)
-    assert not main.is_alive() and not observer.is_alive()
+    assert not main.is_alive()
+    assert not observer.is_alive()
     assert errors == []
     assert not raced
     status = json.loads((tmp_path / "status.json").read_text())
@@ -131,7 +133,8 @@ def test_identity_failure_halts_lease_outside_lifecycle_mutex(isolated, monkeypa
     evidence = launch("navigation-evidence", failed_evidence, errors)
     actuator.join(2)
     evidence.join(2)
-    assert not actuator.is_alive() and not evidence.is_alive()
+    assert not actuator.is_alive()
+    assert not evidence.is_alive()
     assert errors == []
     assert rejected == ["navigation_journey_identity_mismatch"]
     assert lease.latched

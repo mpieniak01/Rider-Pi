@@ -101,14 +101,17 @@ class JourneyProgress:
             self.active = False
             self.ended = self.clock()
             self.reason = reason
-            self.state = (
-                "blocked"
-                if reason.startswith("avoidance_")
-                else "stopped"
-                if reason
-                in {"operator_stop", "operator_intervention", "navigation_stopped", "navigation_authority_lost"}
-                else "failed"
-            )
+            if reason.startswith("avoidance_"):
+                self.state = "blocked"
+            elif reason in {
+                "operator_stop",
+                "operator_intervention",
+                "navigation_stopped",
+                "navigation_authority_lost",
+            }:
+                self.state = "stopped"
+            else:
+                self.state = "failed"
 
     def snapshot(self):
         return {

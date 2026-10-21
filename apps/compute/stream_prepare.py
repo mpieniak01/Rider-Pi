@@ -165,6 +165,10 @@ def prepare_stream(
         if clock() >= deadline:
             raise ComputeError("navigation_stream_prepare_timeout", 504)
         return None
+    return _prepare_native_stream(config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version)
+
+
+def _prepare_native_stream(config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version):
     while clock() < deadline:
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)

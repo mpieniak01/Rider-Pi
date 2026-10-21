@@ -167,6 +167,25 @@ class TrialPreparation:
         self.context.update(generation=next_generation, owner=None, state="DISARMED", sequence=current.get("last_seq"))
         return result
 
+    def _admit_journey(self, safety, policy):
+        if not self.is_journey:
+            return
+        avoidance = policy.get("avoidance") or {}
+        if type(safety.get("navigation_journey_version")) is not int or safety["navigation_journey_version"] != 1:
+            raise TrialError("navigation_journey_update_required")
+        if (
+            avoidance.get("enabled") is not True
+            or avoidance.get("protocol_version") != 3
+            or avoidance.get("sweep_verified") is not True
+        ):
+            raise TrialError("navigation_journey_avoidance_required")
+        from services.navigation_config import validate
+
+        try:
+            validate({**policy, "mode": "drive"})
+        except ValueError as exc:
+            raise TrialError(str(exc)) from exc
+
     def _admit(self):
         # Accepted at arrival. Serialization/restore must not age the
         # original click out of its ingress TTL. The original generation,
@@ -194,22 +213,7 @@ class TrialPreparation:
         policy = self.policy()
         if not policy.get("verified") or not policy.get("calibration_id") or not policy.get("model_sha256"):
             raise TrialError("navigation_validation_required")
-        if self.is_journey:
-            avoidance = policy.get("avoidance") or {}
-            if type(safety.get("navigation_journey_version")) is not int or safety["navigation_journey_version"] != 1:
-                raise TrialError("navigation_journey_update_required")
-            if (
-                avoidance.get("enabled") is not True
-                or avoidance.get("protocol_version") != 3
-                or avoidance.get("sweep_verified") is not True
-            ):
-                raise TrialError("navigation_journey_avoidance_required")
-            from services.navigation_config import validate
-
-            try:
-                validate({**policy, "mode": "drive"})
-            except ValueError as exc:
-                raise TrialError(str(exc)) from exc
+        self._admit_journey(safety, policy)
         self._reserve(self.body)
 
     def _prepare_sources(self):

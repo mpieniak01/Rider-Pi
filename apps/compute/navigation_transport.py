@@ -42,9 +42,7 @@ class NavigationHTTPTransport:
     def status(self):
         return {"connections": self.connections, "requests": self.requests}
 
-    def open(self, request, *, timeout):
-        if self.closed:
-            raise ComputeError("navigation_transport_closed")
+    def _validated_target(self, request):
         parsed = urlsplit(request.full_url)
         if (
             (parsed.scheme, parsed.hostname, parsed.port) != self.origin
@@ -56,6 +54,12 @@ class NavigationHTTPTransport:
             or request.get_method() != "POST"
         ):
             raise ComputeError("navigation_transport_target_invalid")
+        return parsed
+
+    def open(self, request, *, timeout):
+        if self.closed:
+            raise ComputeError("navigation_transport_closed")
+        parsed = self._validated_target(request)
         if self.last_response is not None and self.clock() - self.last_response >= 2.0:
             self._discard()
         if self.connection is None:
