@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 const assets = new URL('../web/assets/operator/', import.meta.url);
+const historySource=await readFile(new URL('system-history.js',assets),'utf8');
+const {systemHistory,systemEvent}=await import('data:text/javascript;base64,'+Buffer.from(historySource).toString('base64'));
 const source = (await readFile(new URL('transport.js', assets), 'utf8')).replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' '));
 async function fixture() {
   let clock = 1000;
@@ -100,13 +102,13 @@ test('server timing hints affect presentation only; hidden pages sleep', async (
 test('history uses real timestamps, preserves peaks and leaves gaps after inactivity', async () => {
   const src = (await readFile(new URL('overview.js', assets), 'utf8'))
     .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Overview', '       class Overview') + ';globalThis.Overview=Overview;';
-  const context = vm.createContext({});
+  const context = vm.createContext({systemHistory,systemEvent,nowSeconds:()=>1030});
   vm.runInContext(src, context, {filename:new URL('overview.js',assets).href});
   const paths = []; let current;
   const ctx = { beginPath() { current = []; paths.push(current); }, moveTo(x, y) { current.push(['move', x, y]); },
     lineTo(x, y) { current.push(['line', x, y]); }, stroke() {}, fillText() {} };
   context.Overview.prototype.drawHistory.call({ axes: () => ({ ctx, x: 0, y: 0, width: 60, height: 100 }) },
-    [10, 20, 30], [40, 40, 40], [80, 90, 95], [1000, 1001, 1030], 1030);
+    {hist_cpu:[10,20,30],hist_mem:[40,40,40],hist_cpu_peak:[80,90,95],hist_ts:[1000,1001,1030]},0);
   assert.ok(Math.abs(paths[0][0][2] - 20) < 1e-9); // Peak 80%, not the one-second average.
   assert.deepEqual(Array.from(paths[1], point => point[0]), ['move', 'line', 'move']);
   assert.equal(paths[1][0][1], 30);
@@ -134,11 +136,11 @@ test('overview reads idle metadata once, skips absent detector and resumes after
 test('a missing timestamp breaks timed history instead of falling back to index',async()=>{
   const src=(await readFile(new URL('overview.js',assets),'utf8'))
     .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class Overview', '       class Overview') + ';globalThis.Overview=Overview;';
-  const context=vm.createContext({});vm.runInContext(src,context,{filename:new URL('overview.js',assets).href});
+  const context=vm.createContext({systemHistory,systemEvent,nowSeconds:()=>1030});vm.runInContext(src,context,{filename:new URL('overview.js',assets).href});
   const marks=[];
   const ctx={beginPath(){},moveTo(x,y){marks.push('move');},lineTo(x,y){marks.push('line');},stroke(){},fillText(){}};
   context.Overview.prototype.drawHistory.call({axes:()=>({ctx,x:0,y:0,width:60,height:100})},
-    [10,20,30],[],[],[1000,null,1006],1006);
+    {hist_cpu:[10,20,30],hist_ts:[1000,null,1006]},0,1006);
   assert.deepEqual(marks,['move','move']);
 });
 
@@ -153,6 +155,7 @@ async function overviewFixture() {
   const ctx = { beginPath() { paths.push([]); }, moveTo(x, y) { paths.at(-1).push(['move', x, y]); },
     lineTo(x, y) { paths.at(-1).push(['line', x, y]); }, stroke() {}, fillText() {} };
   const context = vm.createContext({
+    systemHistory,systemEvent,performance:{now:()=>clock*1000},
     poll: load => { polls.push(load); return {}; },
     request: async () => { if (fail) throw new Error('connection lost'); return { data: sample }; },
     setInterval: () => 1, clearInterval() {}, window: { addEventListener() {} },
@@ -198,7 +201,7 @@ test('history moves with time and fully expires during an outage without erasing
 
 test('a long idle interval cannot render old samples or stretch a short new series over sixty seconds', async () => {
   const f = await overviewFixture();
-  const history = f.overview.drawHistory([40, 30, 20], [20, 20, 20], [50, 40, 30], [600, 1029, 1030], 1030);
+  const history = f.overview.drawHistory({hist_cpu:[40,30,20],hist_mem:[20,20,20],hist_cpu_peak:[50,40,30],hist_ts:[600,1029,1030]});
   assert.equal(history.count, 2);
   assert.equal(history.span, 1);
   assert.deepEqual(f.paths[1].map(point => point[1]), [59, 60]);
@@ -216,7 +219,7 @@ test('current series reports real gaps, whereas a warm-up reports its short cove
 
 test('untimed, future and out-of-window samples never masquerade as current history', async () => {
   const f = await overviewFixture();
-  const history = f.overview.drawHistory([10, 20, 30, 40, 50], [], [], [900, null, 1029, 1030, 1040], 1030);
+  const history = f.overview.drawHistory({hist_cpu:[10,20,30,40,50],hist_mem:[],hist_cpu_peak:[],hist_ts:[900,null,1029,1030,1040]});
   assert.equal(history.count, 2);
   assert.deepEqual(f.paths[0].map(point => point[0]), ['move', 'line']);
 });

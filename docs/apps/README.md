@@ -77,3 +77,5 @@ Zobacz [docs/ops/systemd-scripts.md](../ops/systemd-scripts.md) dla zarządzania
 - [docs/config/](../config/) — parametry konfiguracji
 
 **Ostatnia aktualizacja:** 2025-01
+
+- [CPU/RAM history and diagnostics](system-telemetry.md)

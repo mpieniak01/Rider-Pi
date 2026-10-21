@@ -172,10 +172,10 @@ test('history gap drawing starts a new pen and retains empty and nonempty relati
   const f=await fixture('overview.js'),overview=Object.create(f.namespace.Overview.prototype),events=[];
   const ctx={beginPath(){},stroke(){},fillText(){},moveTo:()=>events.push('move'),lineTo:()=>events.push('line')};
   overview.axes=()=>({ctx,x:0,y:0,width:60,height:100});
-  const summary=overview.drawHistory([10,20,30],[],[],[996,997,1000],1000);
+  const summary=overview.drawHistory({hist_cpu:[10,20,30],hist_ts:[996,997,1000]},0,1000);
   assert.deepEqual(events,['move','line','move']);
   assert.deepEqual(plain(summary),{count:3,span:4,gaps:true});
-  assert.deepEqual(plain(overview.drawHistory([],[],[],[],1000)),{count:0,span:0,gaps:false});
+  assert.deepEqual(plain(overview.drawHistory({},0,1000)),{count:0,span:0,gaps:false});
 });
 test('posture false, unknown and dirty values remain distinct and rendering sends no commands',async()=>{
   const f=await fixture('posture.js'),panel=Object.create(f.namespace.Posture.prototype);

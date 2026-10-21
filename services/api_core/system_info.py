@@ -58,7 +58,7 @@ def mem_info() -> dict[str, float]:
             return {"total": total, "available": avail, "used": used, "pct": pct}
     except Exception:
         pass
-    return {"total": 0.0, "available": 0.0, "used": 0.0, "pct": 0.0}
+    return {"total": None, "available": None, "used": None, "pct": None}
 
 
 def disk_info(path: str = "/") -> dict[str, float]:
@@ -113,7 +113,7 @@ def _collect_system(slow: bool) -> dict:
     mi = mem_info()
     return {
         "load": {"1": round(la1, 2), "5": round(la5, 2), "15": round(la15, 2)},
-        "mem": {**mi, "pct": round(mi["pct"], 1)},
+        "mem": {**mi, "pct": round(mi["pct"], 1) if mi["pct"] is not None else None},
         "disk": {**_slow_metrics["disk"], "pct": round(_slow_metrics["disk"]["pct"], 1)},
         "temp_c": round(temp_c(), 1),
         "os": dict(_slow_metrics["os"]),
@@ -146,16 +146,20 @@ def sysinfo() -> Response:
     from . import compat
 
     si = get_sysinfo(compat.HIST_CPU, compat.HIST_MEM)
+
+    def scaled(value, divisor):
+        return round(value / divisor, 1) if value is not None else None
+
     out = {
         "cpu_pct": si["cpu_pct"],
         "load1": si["load"]["1"],
         "load5": si["load"]["5"],
         "load15": si["load"]["15"],
-        "mem_total_mb": round(si["mem"]["total"] / 1048576, 1),
-        "mem_used_mb": round(si["mem"]["used"] / 1048576, 1),
+        "mem_total_mb": scaled(si["mem"]["total"], 1048576),
+        "mem_used_mb": scaled(si["mem"]["used"], 1048576),
         "mem_pct": si["mem"]["pct"],
-        "disk_total_gb": round(si["disk"]["total"] / 1073741824, 1),
-        "disk_used_gb": round(si["disk"]["used"] / 1073741824, 1),
+        "disk_total_gb": scaled(si["disk"]["total"], 1073741824),
+        "disk_used_gb": scaled(si["disk"]["used"], 1073741824),
         "disk_pct": si["disk"]["pct"],
         "temp_c": si["temp_c"],
         "hist_cpu": si["hist_cpu"],
@@ -164,6 +168,11 @@ def sysinfo() -> Response:
         "hist_cpu_peak": si["hist_cpu_peak"],
         "cpu_peak_pct": si["cpu_peak_pct"],
         "sampling": si["sampling"],
+        "observation": si["observation"],
+        "stale": si["stale"],
+        "hist_mono": si["hist_mono"],
+        "hist_generation": si["hist_generation"],
+        "hist_seq": si["hist_seq"],
         "os_release": (si["os"].get("pretty") or "—") + " · " + (si["os"].get("kernel") or "—"),
         "ts": si["ts"],
     }
@@ -190,7 +199,8 @@ def metrics() -> Response:
     lines: list[str] = []
 
     def m(name, val) -> None:
-        lines.append(f"{name} {val}")
+        if val is not None:
+            lines.append(f"{name} {val}")
 
     if si["cpu_pct"] is not None:
         m("rider_cpu_pct", si["cpu_pct"])
