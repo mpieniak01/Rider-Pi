@@ -2,17 +2,30 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import uuid
 from pathlib import Path
 
 from common.compute_url import PEER_ID
+from common.runtime_lock import open_owned
 from common.secure_files import atomic_write, readonly_file
 
 
 def identity():
     path = Path(os.getenv("RIDER_TRANSPORT_IDENTITY_FILE", "data/transport_identity.json"))
+    descriptor = open_owned(path.with_name(path.name + ".lock"))
+    try:
+        # atomic_write(replace=False) briefly has two links while publishing.
+        # Serialize reads too, so strict readonly_file never sees that window.
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        return _load_or_create(path)
+    finally:
+        os.close(descriptor)
+
+
+def _load_or_create(path):
     try:
         return _read(path)
     except FileNotFoundError:

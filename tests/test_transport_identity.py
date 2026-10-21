@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import json
+import threading
 
 import pytest
 from flask import Flask
@@ -101,3 +102,51 @@ def test_identity_envelope_has_own_contract_without_secret_fields(identity_file)
     assert response.json["meta"]["contract_id"] == "rider.transport"
     assert response.json["data"] == transport_identity.identity()
     assert "token" not in json.dumps(response.json)
+
+
+def test_overlapping_publication_holds_readers_until_single_link(identity_file, monkeypatch):
+    from common import secure_files
+
+    published, release, contender_opened = threading.Event(), threading.Event(), threading.Event()
+    original_link, original_owned = secure_files.os.link, transport_identity.open_owned
+
+    def link_then_pause(*args, **kwargs):
+        original_link(*args, **kwargs)
+        published.set()
+        if not release.wait(3):
+            raise TimeoutError("fixture did not release publication")
+
+    def owned(path):
+        descriptor = original_owned(path)
+        if published.is_set():
+            contender_opened.set()
+        return descriptor
+
+    monkeypatch.setattr(secure_files.os, "link", link_then_pause)
+    monkeypatch.setattr(transport_identity, "open_owned", owned)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
+        try:
+            creator = workers.submit(transport_identity.identity)
+            assert published.wait(3)
+            assert identity_file.stat().st_nlink == 2
+            reader = workers.submit(transport_identity.identity)
+            assert contender_opened.wait(3)
+            # The reader must wait, rather than report corruption during publish.
+            with pytest.raises(concurrent.futures.TimeoutError):
+                reader.result(timeout=0.05)
+            release.set()
+            assert creator.result(timeout=3) == reader.result(timeout=3)
+            assert identity_file.stat().st_nlink == 1
+        finally:
+            release.set()
+
+
+def test_identity_lock_symlink_is_refused_before_identity_creation(identity_file, tmp_path):
+    identity_file.parent.mkdir()
+    outside = tmp_path / "outside-lock"
+    outside.write_text("untouched")
+    identity_file.with_name(identity_file.name + ".lock").symlink_to(outside)
+    response = app().test_client().get("/api/v1/transport/identity")
+    assert response.status_code == 503
+    assert not identity_file.exists()
+    assert outside.read_text() == "untouched"
