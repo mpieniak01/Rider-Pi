@@ -86,6 +86,33 @@ konflikt rewizji albo aktywny cel. CLI i API używają wspólnej blokady orkiest
 Starsza konfiguracja lokalna/PC pozostaje do jawnego powrotu wersji. Heartbeat PC
 nie zmienia adresu ani wyboru Venoma. Awaria Venoma nie uruchamia lokalnych modeli.
 
+## Opcjonalny keepalive odczytów API Pi
+
+Serwer API Pi zachowuje domyślnie dotychczasowe zamykanie połączeń.
+`RIDER_API_HTTP_KEEPALIVE=1` w istniejącym prywatnym środowisku usługi API
+włącza ograniczone HTTP/1.1 wyłącznie dla zakwalifikowanego runtime:
+Python 3.9 z Werkzeug 1.0.1. Brak flagi, `0`, `false` lub `off` pozostawia
+stare zachowanie. Jawne włączenie na innej wersji zatrzymuje start serwera
+z `http_keepalive_runtime_unsupported`; niepoprawna wartość daje
+`http_keepalive_flag_invalid`. Opcja nie wymaga nowych zależności.
+
+Połączenie może zostać ponownie użyte tylko po GET/HEAD bez body,
+bez Transfer-Encoding i Expect, z jednoznacznym brakiem Content-Length
+albo pojedynczym `Content-Length: 0`. POST, PUT, DELETE i pozostałe metody,
+body, niejednoznaczne nagłówki, HTTP/1.0 oraz żądanie `Connection: close`
+zawsze zamykają połączenie. Nieodczytane body odrzuconego żądania nie jest
+przetwarzane jako następne żądanie. `Expect: 100-continue` zachowuje jedną
+odpowiedź tymczasową, a odpowiedź końcowa zamyka połączenie.
+
+Odpowiedzi o znanej długości, np. JSON i pojedynczy JPEG, mogą korzystać
+z tego samego TCP. MJPEG/SSE bez znanej długości nadal kończą się zamknięciem
+połączenia według reguł Werkzeug. Decyzja klienta lub serwera o zamknięciu
+jest zawsze zachowana. Timeout socketu 10 s ogranicza bezczynny odczyt
+oraz zablokowane I/O; nie zmienia TTL poleceń ani terminów sterowania.
+Opcja działa niezależnie od profilu secure/trusted_lan. Włączenie i wyłączenie
+wymaga zwykłego wdrożenia/restartu API oraz osobnego odbioru odczytów na Pi.
+Nie uruchamia celów, sprzętu ani ruchu.
+
 ## Cele i przepływy
 
 - **S12 — Opis sceny w Venomie**: istniejący capture RAW, feed i lekki klient.

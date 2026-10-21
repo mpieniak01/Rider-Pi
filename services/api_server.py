@@ -62,6 +62,7 @@ from services.api_core.chat_routes import register_chat_endpoints
 from services.api_core.face_api import render_face as face_render_shim
 from services.api_core.home_auth_route import home_auth as home_auth_flow, home_auth_url as home_auth_request
 from services.api_core.http_security import apply_cors
+from services.api_core.http_server import server_options
 from services.api_core.resource_api import api_resource
 from services.api_core.service_logs import service_logs
 from services.api_core.static_pages import serve_chat, serve_google_home, serve_home, serve_navigation, serve_web
@@ -587,6 +588,7 @@ except Exception as e:
 
 
 def main():
+    options = server_options()
     try:
         if compat:
             compat.start_bus_sub()
@@ -596,7 +598,7 @@ def main():
         app.logger.warning("compat init warning: %s", e)
     port = DEFAULT_PORT
     try:
-        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, **options)
     finally:
         face_anim.stop()
         rider_routes.close(app)

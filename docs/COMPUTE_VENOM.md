@@ -74,6 +74,31 @@ for `transport_identity_mismatch` or `transport_resolve_failed`. To roll back,
 stop goals and explicitly restore the prior profile/URL; new jobs get new
 sessions.
 
+## Optional keepalive for Pi API reads
+
+The Pi API server retains its existing connection-close behavior by default.
+`RIDER_API_HTTP_KEEPALIVE=1` in the API service's existing private environment
+enables bounded HTTP/1.1 only on the qualified runtime: Python 3.9 with
+Werkzeug 1.0.1. An absent flag, `0`, `false` or `off` preserves old behavior.
+Explicit opt-in on another version stops server startup with
+`http_keepalive_runtime_unsupported`; an invalid value produces
+`http_keepalive_flag_invalid`. No new dependency is required.
+
+Only GET/HEAD without a body, Transfer-Encoding or Expect can reuse a
+connection. Content-Length must be absent or exactly one `Content-Length: 0`.
+POST, PUT, DELETE and other methods, request bodies, ambiguous headers,
+HTTP/1.0 and `Connection: close` always close it. An unread rejected request
+body is never interpreted as the next request. `Expect: 100-continue` retains
+one interim response and closes the connection after the final response.
+
+Known-length responses such as JSON and single JPEGs can share a TCP
+connection. Unknown-length MJPEG/SSE remain close-delimited under Werkzeug's
+rules. Every client or server close decision is honored. The 10-second socket
+timeout bounds idle reads and blocked I/O; it does not alter command TTL or
+control deadlines. The option applies independently of secure/trusted_lan.
+Activation or rollback requires the usual API deployment/restart and separate
+read-only acceptance on Pi. It does not start goals, hardware or motion.
+
 ## Compute goals
 
 - **S12 — scene description:** existing RAW capture/feed and a lightweight
