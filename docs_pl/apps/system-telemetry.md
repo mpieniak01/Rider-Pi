@@ -32,3 +32,5 @@ Oba panele rysują ostatnie 60 s, wygaszają zachowaną historię według wieku 
 Panel zachowuje ostatnią historię po błędzie HTTP. Moduł Venoma nie odmładza powtórzonego wyniku cache i nie przenosi historii między urządzeniami lub sesjami modułu. Potwierdzona zmiana bootu, instancji API lub generacji kolektora daje odrębną etykietę zdarzenia; sama luka nie daje diagnozy restartu.
 
 Awaria tunelu Venoma nie jest dowodem awarii bezpośredniego panelu LAN. Identyfikacja zerwania i konfliktu forwardów wymaga korelacji transportu; przyczyna niepotwierdzona pozostaje nieznana. Ta zmiana nie modyfikuje SSH, częstotliwości, timeoutów, progów bezpieczeństwa ani aktuatorów.
+
+Pole `uptime_s` w `/healthz` mierzy czas procesu API; panel oznacza je jako czas działania API, a nie uptime Linuksa.

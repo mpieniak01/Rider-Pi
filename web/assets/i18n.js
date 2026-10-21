@@ -185,7 +185,7 @@ export const I18N = {
     health: {
       title:                  { pl: "Kondycja", en: "Health" },
       status:                 { pl: "status", en: "status" },
-      uptime:                 { pl: "czas działania",         en: "uptime" },
+      uptime:                 { pl: "czas działania API",     en: "API uptime" },
       bus_last_msg_age:       { pl: "bus: wiek ostatniej wiadomości",  en: "bus.last_msg_age" },
       bus_last_heartbeat_age: { pl: "bus: wiek ostatniego heartbeat",  en: "bus.last_heartbeat_age" },
     },

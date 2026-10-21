@@ -32,3 +32,5 @@ Both panels show the last 60 s, age retained history and break curves on gaps, m
 The panel retains history after HTTP failure. The Venom module does not refresh cached observation ages or transfer history across devices or module sessions. Confirmed boot, API instance or sampler generation changes produce distinct event labels; a gap alone does not diagnose a reboot.
 
 A failed Venom tunnel does not prove that the direct LAN panel failed. Transport interruptions and forward conflicts require correlated evidence; an unconfirmed cause remains unknown. This change does not modify SSH, frequencies, timeouts, safety thresholds or actuators.
+
+The `/healthz` `uptime_s` field measures the API process lifetime; the panel labels it as API uptime, not Linux uptime.
