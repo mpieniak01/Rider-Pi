@@ -26,11 +26,53 @@ This saves configuration; it does not start a goal. Use
 orchestration lock. PC heartbeat does not change selection/address, and a Venom
 failure does not start local models.
 
-Authenticated transport requires HTTPS with certificate verification or an
-HTTP loopback endpoint behind SSH (`localhost`, `127.0.0.1` or `[::1]`). LAN HTTP
-is rejected by the transport client. Configure TLS/tunnels separately before
-hardware acceptance. The URL accepts a host base or `/api/v1/rider/compute`.
-Tunnel ports are installation settings, not additional public service ports.
+The default `transport_profile: "secure"` requires verified HTTPS or an HTTP
+loopback endpoint behind SSH (`localhost`, `127.0.0.1` or `[::1]`). Omitting the
+field in an existing file preserves this policy without migration. The URL
+accepts a host base or `/api/v1/rider/compute`; tunnel ports remain installation
+settings.
+
+Explicit `trusted_lan` permits HTTP for the configured URL and requires the
+Venom `expected_peer_id` (32 lowercase hexadecimal characters). The operator
+first reads and confirms `GET /api/v1/transport/identity` on that installation.
+Identity is public and does not provide cryptographic authentication. The
+bearer token still comes from the private service environment. Stop goals first:
+
+```sh
+python3 -m services.compute_config --url http://venom-host:3300 --device-id robot \
+  --transport-profile trusted_lan --expected-peer-id <confirmed_Venom_peer_id>
+```
+
+This saves the profile without selecting an executor or starting hardware.
+Use a canonical hostname and LAN port resolvable from every client. `.local`
+is optional, never assumed; an internal WSL IP is unsuitable. DHCP changes do
+not rewrite the URL or executor selection. Reopen a browser tab using the name
+if its old numeric IP stops working.
+
+Before credentials, the client checks protocol version 1, `service_role: "venom"`
+and the expected peer_id on the same TCP socket. Name/port failures, timeouts,
+identity mismatch, redirects and invalid identity APIs prevent the token from
+being sent. The Venom server/proxy must retain the connection after identity;
+`Connection: close` produces `transport_identity_connection_closed`, without
+sending credentials on an unverified replacement socket. Compute, navigation
+and passive stream preflight use this policy.
+
+A later active request rebuilds the connection from the canonical hostname.
+One shared gate per peer in a process bounds reconnect backoff to
+1/2/4/8/16/30 seconds with small jitter. There is no timer, network scan or new
+service. The OS resolver owns DNS TTL; the client retains no IP cache and
+renews sockets after two idle seconds or thirty active seconds. Existing loop
+cadences stay unchanged. A new generation invalidates old sessions and pending
+results; POST is never replayed. An active goal may exit on failure and require
+an explicit restart. Lost leases cannot resume recording, capture, playback or
+motion authority.
+
+Local snapshots may include `transport.state`, `error`, `generation` and
+`retry_after_s`. Diagnose in order: Pi name resolution, LAN port, identity,
+profile/peer_id, configured token and capabilities API. Do not replace a token
+for `transport_identity_mismatch` or `transport_resolve_failed`. To roll back,
+stop goals and explicitly restore the prior profile/URL; new jobs get new
+sessions.
 
 ## Compute goals
 

@@ -15,6 +15,8 @@ import wave
 from collections import deque
 from pathlib import Path
 
+from common.compute_url import transport_options
+
 from .client import ComputeClient, ComputeError, validate_wav
 
 LOG = logging.getLogger('compute')
@@ -209,6 +211,7 @@ class GoalRunner:
             device_session(),
             self.selection['id'],
             client_id=self.domain,
+            **transport_options(self.selection),
         )
         capabilities = self.client.capabilities()
         self.capability_snapshot = capabilities
@@ -223,7 +226,9 @@ class GoalRunner:
         identity = getattr(self.client, 'identity', {}) if self.client is not None else {}
         if self.capability_snapshot and identity.get('executor_session') is None:
             identity = {**identity, 'executor_session': self.capability_snapshot.get('executor_session')}
+        peer = getattr(getattr(self.client, '_transport', None), 'peer', None)
         observation = {
+            **({'transport': peer.status()} if peer is not None else {}),
             'domain': self.domain,
             'state': state,
             'observed_at': self.wall_clock(),

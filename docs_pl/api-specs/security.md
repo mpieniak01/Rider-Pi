@@ -4,6 +4,22 @@ Wspólna ochrona działa przed handlerami głównego API, aplikacji kompatybilno
 bridge ruchu i obu workerów voice. Nie uruchamia usług ani nie zmienia zgody
 operatora, generacji poleceń, TTL lub reguł STOP.
 
+## Trwała tożsamość transportu i nazwa LAN
+
+`GET /api/v1/transport/identity` zwraca wyłącznie `protocol_version: 1`, trwały
+`peer_id` (UUID hex) i `service_role: "rider_pi"`. Jest pasywny, bez startu
+kamery, audio, modeli lub ruchu. Plik `RIDER_TRANSPORT_IDENTITY_FILE` domyślnie
+wskazuje `data/transport_identity.json`; powstaje atomowo z prawami `0600`.
+Dla wydań zmieniających katalog aplikacji skonfiguruj stałą ścieżkę danych.
+Nie kopiuj pliku między robotami. Uszkodzonej tożsamości API nie losuje ponownie;
+zwraca 503 `transport_identity_unavailable`, a operator naprawia zapis.
+
+Dla własnej nazwy panelu dodaj ją jawnie do `RIDER_TRUSTED_HOSTS`, np.
+`robot.example`. Własny origin z tą nazwą i portem pozostaje dozwolony; dodatkowe
+originy nadal wymagają pełnych wpisów w `RIDER_ALLOWED_ORIGINS`. HTTP LAN nie
+włącza CORS `*` ani dostępu administracyjnego. Parowanie outbound compute opisuje
+[przewodnik Venoma](../COMPUTE_VENOM.md); tokenów nie ma w identity ani statusie.
+
 ## Origin i typ treści
 
 Domyślnie przeglądarka może używać własnego originu serwera. Dodatkowe originy

@@ -12,14 +12,21 @@ from urllib.parse import urlsplit
 from apps.compute.client import ComputeError
 from common.compute_url import validate_compute_url
 
+from .lan_transport import PeerHTTPTransport
+
 MAX_RESPONSE = 16384
 PREFIX = "/api/v1/rider/compute/vision/"
 
 
 class NavigationHTTPTransport:
-    def __init__(self, base_url, *, clock=time.monotonic):
+    def __init__(self, base_url, *, clock=time.monotonic, transport_profile="secure", expected_peer_id=None):
         try:
-            parsed = validate_compute_url(base_url, allow_api_path=True)
+            parsed = validate_compute_url(
+                base_url,
+                allow_api_path=True,
+                transport_profile=transport_profile,
+                expected_peer_id=expected_peer_id,
+            )
         except ValueError as exc:
             raise ComputeError(str(exc), 400) from None
         self.origin = (parsed.scheme, parsed.hostname, parsed.port)
@@ -29,6 +36,17 @@ class NavigationHTTPTransport:
         self.closed = False
         self.connections = 0
         self.requests = 0
+        self.peer = (
+            PeerHTTPTransport(
+                base_url,
+                transport_profile=transport_profile,
+                expected_peer_id=expected_peer_id,
+                clock=clock,
+            )
+            if expected_peer_id
+            else None
+        )
+        self.generation = None
 
     def _discard(self):
         if self.connection is not None:
@@ -37,9 +55,13 @@ class NavigationHTTPTransport:
 
     def close(self):
         self.closed = True
+        if self.peer is not None:
+            self.peer.close()
         self._discard()
 
     def status(self):
+        if self.peer is not None:
+            return {"connections": self.peer.connections, "requests": self.peer.requests, **self.peer.status()}
         return {"connections": self.connections, "requests": self.requests}
 
     def _validated_target(self, request):
@@ -60,6 +82,8 @@ class NavigationHTTPTransport:
         if self.closed:
             raise ComputeError("navigation_transport_closed")
         parsed = self._validated_target(request)
+        if self.peer is not None:
+            return self._open_peer(request, parsed, timeout)
         if self.last_response is not None and self.clock() - self.last_response >= 2.0:
             self._discard()
         if self.connection is None:
@@ -97,3 +121,31 @@ class NavigationHTTPTransport:
         except Exception:
             self._discard()
             raise
+
+    def _open_peer(self, request, parsed, timeout):
+        try:
+            status, headers, body = self.peer.request(
+                "POST",
+                parsed.path,
+                dict(request.header_items()),
+                request.data,
+                timeout,
+                max_bytes=MAX_RESPONSE,
+                generation=self.generation,
+            )
+            self.generation = self.peer.generation
+        except ComputeError as exc:
+            if exc.code == "transport_generation_changed":
+                # The next explicitly requested capture may use this connection;
+                # the current frame/lease is rejected, never replayed.
+                self.generation = self.peer.generation
+            raise
+        if not 200 <= status < 300:
+            raise urllib.error.HTTPError(
+                request.full_url,
+                status,
+                "navigation_http_error",
+                headers,
+                io.BytesIO(body),
+            )
+        return io.BytesIO(body)

@@ -105,14 +105,19 @@ def _ready_stream(status, local_source, max_age_ms):
     return None
 
 
-def _stream_setup(selection, opener):
+def _stream_setup(selection, opener, *, clock=time.monotonic):
     selection = selection or selected_executor()
     if not selection:
         raise ComputeError("compute_executor_not_selected")
     if opener is None:
-        from apps.compute.navigation import NoRedirect
+        if selection.get("expected_peer_id"):
+            from .stream_transport import StreamStatusTransport
 
-        opener = urllib.request.build_opener(NoRedirect())
+            opener = StreamStatusTransport(selection, clock=clock)
+        else:
+            from apps.compute.navigation import NoRedirect
+
+            opener = urllib.request.build_opener(NoRedirect())
     base = selection["url"].rstrip("/")
     if not base.endswith("/api/v1/rider/compute"):
         base += "/api/v1/rider/compute"
@@ -154,18 +159,25 @@ def prepare_stream(
     if journey_version is not None and (type(journey_version) is not int or journey_version != 1):
         raise ComputeError("navigation_journey_update_required", 409)
     config = snapshot()
-    selection, opener, base = _stream_setup(selection, opener)
-    deadline = clock() + timeout_s
-    if not streaming:
-        req = _status_request(selection, base, stream=False)
-        status = _read_stream_status(opener, req, timeout_s, deadline, clock)
-        _require_journey(status, journey_version)
-        if snapshot() != config:
-            raise ComputeError("navigation_configuration_changed", 409)
-        if clock() >= deadline:
-            raise ComputeError("navigation_stream_prepare_timeout", 504)
-        return None
-    return _prepare_native_stream(config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version)
+    owns_opener = opener is None
+    selection, opener, base = _stream_setup(selection, opener, clock=clock)
+    try:
+        deadline = clock() + timeout_s
+        if not streaming:
+            req = _status_request(selection, base, stream=False)
+            status = _read_stream_status(opener, req, timeout_s, deadline, clock)
+            _require_journey(status, journey_version)
+            if snapshot() != config:
+                raise ComputeError("navigation_configuration_changed", 409)
+            if clock() >= deadline:
+                raise ComputeError("navigation_stream_prepare_timeout", 504)
+            return None
+        return _prepare_native_stream(
+            config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version
+        )
+    finally:
+        if owns_opener and hasattr(opener, "close"):
+            opener.close()
 
 
 def _prepare_native_stream(config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version):

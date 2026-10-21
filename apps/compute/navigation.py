@@ -24,6 +24,7 @@ from apps.compute.operator_lifecycle import OperatorLifecycle
 from apps.compute.runners import FrameSource, selected_executor
 from apps.safety.intent import read_service_intent, write_intent_status
 from common.bus import BusPub
+from common.compute_url import transport_options
 from services import navigation_config
 from services.control_commands import submit_control
 from services.safety_contract import read_status
@@ -344,7 +345,11 @@ class NavigationRunner(NavigationCycle):
             # Observation cannot actuate; Wi-Fi jitter must not become a drive permit.
             timeout = max(1.0, timeout)
         if self.decision_transport is None:
-            self.decision_transport = NavigationHTTPTransport(self.selection["url"], clock=self.clock)
+            self.decision_transport = NavigationHTTPTransport(
+                self.selection["url"],
+                clock=self.clock,
+                **transport_options(self.selection),
+            )
         with self.decision_transport.open(req, timeout=timeout) as response:
             body = response.read(16385)
             if len(body) > 16384:

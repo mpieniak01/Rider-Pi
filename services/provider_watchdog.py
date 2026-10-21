@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from services import provider_registry as registry
 
@@ -47,18 +48,43 @@ def _fetch_pc_capabilities(base_url: str) -> tuple[Any, float]:
     req = urllib.request.Request(url, method="GET", headers={"Accept": "application/vnd.rider.api+json;version=1"})
     start = time.time()
 
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-        raw = resp.read()
-        latency_ms = (time.time() - start) * 1000.0
+    options = registry.get_pc_transport_options()
+    if options["expected_peer_id"]:
+        from apps.compute.lan_transport import PeerHTTPTransport
 
-        data = json.loads(raw.decode("utf-8"))
-        if isinstance(data, dict) and isinstance(data.get("meta"), dict):
-            if data["meta"].get("envelope_version") != 1 or data.get("ok") is not True:
-                raise ValueError("invalid peer capabilities envelope")
-            data = data.get("data")
-        if not isinstance(data, dict) or not all(isinstance(data.get(domain), dict) for domain in registry.DOMAINS):
-            raise ValueError("invalid peer capabilities")
-        return data, latency_ms
+        parsed = urlsplit(base_url)
+        transport = PeerHTTPTransport(urlunsplit((parsed.scheme, parsed.netloc, "", "", "")), **options)
+        try:
+            status, _, raw = transport.request(
+                "GET",
+                (parsed.path.rstrip("/") + PC_CAP_PATH),
+                dict(req.header_items()),
+                b"",
+                REQUEST_TIMEOUT,
+                max_bytes=16384,
+            )
+            if status != 200:
+                raise ValueError("legacy_peer_capabilities_unavailable")
+        finally:
+            transport.close()
+    else:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+            raw = resp.read(16385)
+    latency_ms = (time.time() - start) * 1000.0
+    if len(raw) > 16384:
+        raise ValueError("legacy_peer_capabilities_bounds")
+    return _parse_capabilities(raw), latency_ms
+
+
+def _parse_capabilities(raw):
+    data = json.loads(raw.decode("utf-8"))
+    if isinstance(data, dict) and isinstance(data.get("meta"), dict):
+        if data["meta"].get("envelope_version") != 1 or data.get("ok") is not True:
+            raise ValueError("invalid peer capabilities envelope")
+        data = data.get("data")
+    if not isinstance(data, dict) or not all(isinstance(data.get(domain), dict) for domain in registry.DOMAINS):
+        raise ValueError("invalid peer capabilities")
+    return data
 
 
 def _restore_domains() -> None:

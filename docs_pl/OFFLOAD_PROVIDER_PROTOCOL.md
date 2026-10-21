@@ -1,5 +1,13 @@
 # Integracja z providerem PC / Offload
 
+Starszy rejestr providerów nie wybiera executora compute. Domyślnie zachowuje
+HTTPS/loopback. Jeśli nadal używany watchdog ma odpytywać sparowanego Venoma po
+HTTP, operator ustawia `PROVIDER_PC_TRANSPORT_PROFILE=trusted_lan` i
+`PROVIDER_PC_EXPECTED_PEER_ID=<potwierdzony_peer_id>` oraz kanoniczny
+`PROVIDER_PC_BASE_URL`. Watchdog sprawdza identity przed capabilities. Heartbeat
+nie może zmienić tak powiązanego URL; nie zmienia również rewizji ani wyboru
+compute. Nowe przepływy używają [jednej konfiguracji compute](COMPUTE_VENOM.md).
+
 > Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne; Pi waliduje odpowiedzi i zachowuje kontrolę wykonania ruchu. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
 
 Jedyna aktualna referencja kontraktu pomiędzy urządzeniem Rider-Pi a towarzyszącym stosem Rider-PC.  

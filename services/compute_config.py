@@ -66,7 +66,12 @@ def _validate(data):
         if not isinstance(name, str) or not ID.fullmatch(name) or not isinstance(row, dict):
             raise ValueError("compute_configuration_invalid")
         try:
-            validate_compute_url(row.get("url", ""), allow_api_path=True)
+            validate_compute_url(
+                row.get("url", ""),
+                allow_api_path=True,
+                transport_profile=row.get("transport_profile", "secure"),
+                expected_peer_id=row.get("expected_peer_id"),
+            )
         except ValueError as exc:
             raise ValueError("compute_configuration_invalid") from exc
         if (
@@ -109,7 +114,13 @@ def snapshot():
         "selected_executor": data["selected_executor"],
         "persisted": config_path().is_file(),
         "executors": [
-            {"id": name, "tasks": row["tasks"], "credential_configured": bool(os.getenv(row["token_env"]))}
+            {
+                "id": name,
+                "tasks": row["tasks"],
+                "credential_configured": bool(os.getenv(row["token_env"])),
+                "transport_profile": row.get("transport_profile", "secure"),
+                "identity_pinned": bool(row.get("expected_peer_id")),
+            }
             for name, row in data["executors"].items()
         ],
     }
@@ -131,6 +142,8 @@ def selected_executor():
         "device_id": data["device_id"],
         "tasks": row["tasks"],
         "revision": data["revision"],
+        "transport_profile": row.get("transport_profile", "secure"),
+        "expected_peer_id": row.get("expected_peer_id"),
     }
 
 
@@ -185,7 +198,15 @@ def _selection_lock():
         yield
 
 
-def configure(url, device_id, executor_id="venom", token_env="RIDER_COMPUTE_TOKEN"):
+def configure(
+    url,
+    device_id,
+    executor_id="venom",
+    token_env="RIDER_COMPUTE_TOKEN",
+    *,
+    transport_profile="secure",
+    expected_peer_id=None,
+):
     """Emergency CLI shares this domain; credentials remain in the service env."""
     if not isinstance(url, str):
         raise ValueError("compute_configuration_invalid")
@@ -193,7 +214,13 @@ def configure(url, device_id, executor_id="venom", token_env="RIDER_COMPUTE_TOKE
         _require_idle_goals()
         data = _read()
         data.update(device_id=device_id, revision=data["revision"] + 1)
-        data["executors"][executor_id] = {"url": url.rstrip("/"), "token_env": token_env, "tasks": list(TASKS)}
+        data["executors"][executor_id] = {
+            "url": url.rstrip("/"),
+            "token_env": token_env,
+            "tasks": list(TASKS),
+            "transport_profile": transport_profile,
+            "expected_peer_id": expected_peer_id,
+        }
         _write(config_path(), _validate(data))
     return snapshot()
 
@@ -228,9 +255,18 @@ def record_status(domain, observation, *, revision):
         "device_id",
         "device_session",
         "transport_online",
+        "transport",
     }
     row = {key: value for key, value in observation.items() if key in allowed}
     row.update(revision=revision, received_at=time.time())
+    if isinstance(row.get("transport"), dict):
+        row["transport"] = {
+            key: value
+            for key, value in row["transport"].items()
+            if key in {"state", "error", "generation", "retry_after_s"}
+        }
+    else:
+        row.pop("transport", None)
     if isinstance(row.get("data"), dict):
         row["data"] = {
             key: value[:4096] if isinstance(value, str) else value
@@ -284,8 +320,21 @@ def main():
     parser.add_argument("--device-id", required=True)
     parser.add_argument("--executor-id", default="venom")
     parser.add_argument("--token-env", default="RIDER_COMPUTE_TOKEN")
+    parser.add_argument("--transport-profile", choices=("secure", "trusted_lan"), default="secure")
+    parser.add_argument("--expected-peer-id")
     args = parser.parse_args()
-    print(json.dumps(configure(args.url, args.device_id, args.executor_id, args.token_env)))
+    print(
+        json.dumps(
+            configure(
+                args.url,
+                args.device_id,
+                args.executor_id,
+                args.token_env,
+                transport_profile=args.transport_profile,
+                expected_peer_id=args.expected_peer_id,
+            )
+        )
+    )
 
 
 if __name__ == "__main__":
