@@ -49,6 +49,8 @@ def _request(suffix, body=None, *, transport_factory=PeerHTTPTransport):
             try:
                 error = json.loads(raw)
                 candidate = error.get("detail", error.get("error"))
+                if isinstance(candidate, dict):
+                    candidate = candidate.get("code")
                 if isinstance(candidate, str) and candidate.replace("_", "").isalnum() and len(candidate) <= 128:
                     code = candidate
             except (ValueError, TypeError, AttributeError):

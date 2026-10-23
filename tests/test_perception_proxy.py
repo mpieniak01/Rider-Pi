@@ -183,3 +183,33 @@ def test_api_maps_selection_busy_and_unavailable_without_private_error(monkeypat
             response, code = navigation_api._model_response(fail)
             assert code == status
             assert "private" not in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {"detail": {"code": "navigation_model_requires_idle_disarmed", "details": {"private": "/server/path"}}},
+        {"error": {"code": "navigation_model_requires_idle_disarmed", "details": "fixture-private-context"}},
+    ],
+)
+def test_host_structured_error_preserves_only_safe_code(transport, envelope):
+    transport.status = 409
+    transport.body = json.dumps(envelope).encode()
+    with pytest.raises(ComputeError) as failure:
+        proxy._request("model", {"revision": 3, "model_id": "fast-scnn-floor"}, transport_factory=transport.transport)
+    assert failure.value.code == "navigation_model_requires_idle_disarmed"
+    assert failure.value.status == 409
+    assert "private" not in str(failure.value)
+    assert "/server/path" not in str(failure.value)
+    assert transport.closed
+
+
+@pytest.mark.parametrize("code", ["private /path", {"not": "a code"}, "", "x" * 129])
+def test_structured_error_never_exports_unsafe_code_or_details(transport, code):
+    transport.status = 503
+    transport.body = json.dumps({"detail": {"code": code, "details": "fixture-private-context"}}).encode()
+    with pytest.raises(ComputeError) as failure:
+        proxy._request("models", transport_factory=transport.transport)
+    assert failure.value.code == "navigation_model_host_unavailable"
+    assert "fixture-private-context" not in str(failure.value)
+    assert transport.closed
