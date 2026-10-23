@@ -1,4 +1,34 @@
 export const profileMessages = {
+  "behavior.localOnly": ["Profile Ostrożny, Zrównoważony i Płynny wymagają analizy na Venomie. Teraz wybrano lokalny algorytm Rider-Pi: {model}. Wybierz dostawcę Venom, aby zastosować nowy profil; wspierany powrót do Legacy pozostaje dostępny.", "Cautious, Balanced and Fluid profiles require analysis on Venom. The selected provider uses the local Rider-Pi algorithm: {model}. Select Venom to apply a new profile; a supported rollback to Legacy remains available.", "Die Profile Vorsichtig, Ausgewogen und Flüssig erfordern Analyse auf Venom. Gewählt ist der lokale Rider-Pi-Algorithmus: {model}. Venom wählen, um ein neues Profil anzuwenden; eine unterstützte Rückkehr zu Legacy bleibt möglich."],
+  "tuning.providerUnknown": ["Odczytaj aktualny stan dostawcy analizy, aby stroić właściwy model.", "Read the current analysis provider before tuning its model.", "Vor der Modellabstimmung den aktuellen Analyseanbieter lesen."],
+  "tuning.local": ["Wybrano lokalny algorytm Rider-Pi: {model}. Ustawienia modeli hosta Venom są dostępne po wybraniu dostawcy Venom.", "Local Rider-Pi algorithm selected: {model}. Venom model settings are available after selecting the Venom provider.", "Lokaler Rider-Pi-Algorithmus gewählt: {model}. Venom-Modelleinstellungen sind nach Wahl des Venom-Anbieters verfügbar."],
+  "tuning.slope_min": ["Minimalna orientacja podłoża (1–4)", "Minimum ground orientation (1–4)", "Minimale Bodenausrichtung (1–4)"],
+  "tuning.outlier_limit": ["Udział pikseli odstających (0–2%)", "Outlier pixel fraction (0–2%)", "Ausreißerpixelanteil (0–2%)"],
+  "tuning.residual_limit": ["Tolerancja odchylenia głębi (0,01–0,15)", "Depth residual limit (0.01–0.15)", "Tiefenabweichung (0,01–0,15)"],
+  "tuning.failed": ["Nie zapisano ustawień modelu. Odśwież stan i sprawdź diagnostykę.", "Model settings were not saved. Refresh the state and check diagnostics.", "Modelleinstellungen wurden nicht gespeichert. Zustand aktualisieren und Diagnose prüfen."],
+  "tuning.invalid": ["Wpisz skończone wartości w pokazanych zakresach lub wybierz dziedziczenie.", "Enter finite values within the shown bounds or choose inheritance.", "Endliche Werte innerhalb der angezeigten Grenzen eingeben oder Übernahme wählen."],
+  "tuning.pending": ["Zmiany modelu oczekują na zapis.", "Model changes are pending.", "Modelländerungen warten auf das Speichern."],
+  "tuning.saved": ["Ustawienia modelu zapisano w konfiguracji r{revision}. Jazda wymaga nowego odbioru operatora.", "Model settings saved in configuration r{revision}. Driving requires fresh operator acceptance.", "Modelleinstellungen in Konfiguration r{revision} gespeichert. Fahren erfordert eine neue Bedienerabnahme."],
+  "tuning.apply": ["Zapisz model — obserwacja", "Save model — observation", "Modell speichern — Beobachtung"],
+  "tuning.unsupported": ["Strojenie segmentacji wymaga zgodnej aktualizacji Venoma i Rider-Pi. Zaktualizuj obie strony i odśwież połączenie. Obecna konfiguracja pozostaje aktywna.", "Segmentation tuning requires compatible Venom and Rider-Pi updates. Update both sides and refresh the connection. The current configuration remains active.", "Die Segmentierungsabstimmung benötigt kompatible Updates für Venom und Rider-Pi. Beide Seiten aktualisieren und die Verbindung erneuern. Die aktuelle Konfiguration bleibt aktiv."],
+  "tuning.effective": ["Zapisane parametry efektywne z serwera", "Saved effective parameters from server", "Gespeicherte wirksame Serverparameter"],
+  "tuning.value": ["Wartość (udział 0–1)", "Value (fraction 0–1)", "Wert (Anteil 0–1)"],
+  "tuning.custom": ["Własna wartość dla modelu", "Custom value for this model", "Eigener Wert für dieses Modell"],
+  "tuning.inherit": ["Dziedzicz z profilu jazdy", "Inherit driving profile", "Vom Fahrprofil übernehmen"],
+  "tuning.min_region_fraction": ["Minimalny udział obszaru (0–0,02)", "Minimum region fraction (0–0.02)", "Minimaler Bereichsanteil (0–0,02)"],
+  "tuning.max_uncertain_fraction": ["Maksymalny udział niepewności (0–0,5)", "Maximum uncertain fraction (0–0.5)", "Maximaler Unsicherheitsanteil (0–0,5)"],
+  "tuning.min_floor_fraction": ["Minimalny udział podłoża (0,5–1)", "Minimum surface fraction (0.5–1)", "Minimaler Bodenanteil (0,5–1)"],
+  "tuning.pixel_confidence": ["Pewność klasy piksela (0,05–1)", "Pixel class confidence (0.05–1)", "Pixelklassenkonfidenz (0,05–1)"],
+  "tuning.rugHint": ["Dywan jest osobną klasą ADE20K. Wybór podłoga + dywan zmienia mapowanie podłoża; nie usuwa oceny przeszkód, krawędzi ani bliskiej strefy zatrzymania.", "Rug is a separate ADE20K class. Floor + rug changes the surface mapping; obstacle, boundary and near stopping-zone assessment remain active.", "Teppich ist eine eigene ADE20K-Klasse. Boden + Teppich ändert die Bodenabbildung; Hindernis-, Grenz- und Nahstoppbewertung bleiben aktiv."],
+  "tuning.floorRug": ["Podłoga i dywan (floor = 3, rug = 28)", "Floor and rug (floor = 3, rug = 28)", "Boden und Teppich (floor = 3, rug = 28)"],
+  "tuning.floorOnly": ["Podłoga (floor = 3)", "Floor only (floor = 3)", "Nur Boden (floor = 3)"],
+  "tuning.surface": ["Klasy przejezdnego podłoża", "Traversable surface classes", "Befahrbare Bodenklassen"],
+  "tuning.depth": ["Geometria Depth Anything V2", "Depth Anything V2 geometry", "Depth Anything V2 Geometrie"],
+  "tuning.semantic": ["Segmentacja podłoża", "Surface segmentation", "Bodensegmentierung"],
+  "tuning.noModel": ["Brak wybranego modelu obsługującego te ustawienia.", "No selected model supports these settings.", "Kein gewähltes Modell unterstützt diese Einstellungen."],
+  "tuning.current": ["Wybrany model: {model} · zapis konfiguracji r{revision}", "Selected model: {model} · saved configuration r{revision}", "Gewähltes Modell: {model} · gespeicherte Konfiguration r{revision}"],
+  "tuning.hint": ["Ustawienia dotyczą wyłącznie wybranego modelu i są wspólne dla obu paneli. Zapis wymaga zatrzymania pętli i ruchu; ustawia obserwację i kasuje odbiór jazdy. Kamera zachowuje swój stan.", "Settings apply only to the selected model and are shared by both panels. Saving requires stopped loops and motion; it selects observation and clears driving acceptance. The camera keeps its state.", "Einstellungen gelten nur für das gewählte Modell und beide Panels. Speichern erfordert gestoppte Schleifen und Bewegung; es wählt Beobachtung und löscht die Fahrfreigabe. Der Kamerazustand bleibt erhalten."],
+  "tuning.title": ["Strojenie wybranego modelu", "Selected model tuning", "Gewähltes Modell abstimmen"],
   "vision.reason.navigation_stable_clear": ["Stabilnie potwierdzona wolna droga.", "Free corridor consistently confirmed.", "Freier Korridor stabil bestätigt."],
   "vision.reason.navigation_clear_confirmation": ["Potwierdzanie wolnej drogi na nowych klatkach.", "Confirming a free corridor on fresh frames.", "Freien Korridor mit neuen Bildern bestätigen."],
   "vision.reason.navigation_obstacle_confirmed": ["Przeszkoda w torze potwierdzona w czasie.", "Obstacle in the corridor confirmed over time.", "Hindernis im Korridor zeitlich bestätigt."],
@@ -16,21 +46,13 @@ export const profileMessages = {
   "vision.reason.navigation_invalid_evidence": ["Brak wiarygodnych danych do oceny.", "No reliable evidence for assessment.", "Keine zuverlässigen Nachweise für die Bewertung."],
   "vision.reason.temporal_evidence_unavailable": ["Ocena czasowa jest niedostępna.", "Temporal assessment unavailable.", "Zeitliche Bewertung nicht verfügbar."],
   "vision.reason.temporal_navigation_update_required": ["Nowy profil wymaga zgodnej aktualizacji Venoma i Pi.", "This profile requires compatible Venom and Pi versions.", "Dieses Profil benötigt kompatible Venom- und Pi-Versionen."],
-  "behavior.title": [
-    "Profil jazdy",
-    "Driving profile",
-    "Fahrprofil"
-  ],
+  "behavior.title": ["Poziom ostrożności jazdy", "Driving caution level", "Vorsichtsstufe beim Fahren"],
   "behavior.hint": [
     "Wybierz reakcję na szum i krótką niepewność obrazu. STOP operatora, świeżość danych i bliska strefa zatrzymania obowiązują w każdym profilu.",
     "Choose how to handle image noise and brief uncertainty. Operator STOP, data freshness and the near stopping zone apply in every profile.",
     "Reaktion auf Bildrauschen und kurze Unsicherheit wählen. Bediener-STOP, Datenaktualität und Nahbereichsstopp gelten in jedem Profil."
   ],
-  "behavior.select": [
-    "Profil do zastosowania",
-    "Profile to apply",
-    "Anzuwendendes Profil"
-  ],
+  "behavior.select": ["Poziom ostrożności", "Caution level", "Vorsichtsstufe"],
   "behavior.profile.legacy": [
     "Dotychczasowy (Legacy)",
     "Previous (Legacy)",
@@ -131,11 +153,7 @@ export const profileMessages = {
     "Effective policy SHA-256",
     "SHA-256 der wirksamen Richtlinie"
   ],
-  "behavior.unsupported": [
-    "Urządzenie nie udostępnia zgodnego katalogu profili. Zachowaj dotychczasowy profil; wybór jest niedostępny.",
-    "The device does not provide a compatible profile catalog. Keep the established profile; selection is unavailable.",
-    "Das Gerät bietet keinen kompatiblen Profilkatalog. Bisheriges Profil beibehalten; Auswahl nicht verfügbar."
-  ],
+  "behavior.unsupported": ["Ten panel wymaga zgodnej aktualizacji Venoma i Rider-Pi, aby udostępnić poziomy ostrożności. Odśwież połączenie po aktualizacji; dotychczasowy profil pozostaje aktywny.", "Compatible Venom and Rider-Pi updates are required to enable caution levels. Refresh the connection after updating; the established profile remains active.", "Kompatible Updates für Venom und Rider-Pi sind nötig, um Vorsichtsstufen zu aktivieren. Nach dem Update die Verbindung aktualisieren; das bisherige Profil bleibt aktiv."],
   "behavior.conflict": [
     "Konfigurację zmieniono w drugim panelu. Odrzuć wybór, odśwież stan i wybierz ponownie.",
     "Configuration changed in another panel. Discard the draft, refresh and choose again.",

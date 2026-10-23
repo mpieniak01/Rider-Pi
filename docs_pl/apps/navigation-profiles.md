@@ -75,3 +75,6 @@ bez obsługi `behavior` zachowaj kopię konfiguracji, a przy postoju i DISARMED 
 tylko nowe pole, ustaw mode=observe, verified=false, puste calibration_id i
 model_sha256 oraz sweep_verified=false. Nie przywracaj starej zgody ruchu z kopii.
 Migracja pól tożsamości modelu jest osobna.
+
+
+[Per-model settings and operator placement / Ustawienia modeli i położenie w panelu](perception-models.md).

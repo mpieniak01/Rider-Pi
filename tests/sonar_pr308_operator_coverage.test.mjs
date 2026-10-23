@@ -103,7 +103,7 @@ test('footer theme fallback changes dataset and synchronizes both selects withou
 async function application(page = 'control') {
   const f = environment(['actuator-capabilities', 'operator-message', 'last-event', 'chat-send'], page);
   const instances = new Map(), changes = [], stubs = {};
-  const names = { 'camera-pipeline.js': ['CameraPipelineControls', 'PipelinePreview'], 'remote-navigation.js': ['RemoteNavigation'], 'navigation-profiles.js': ['NavigationProfiles'], 'perception-models.js': ['PerceptionModels'],
+  const names = { 'camera-pipeline.js': ['CameraPipelineControls', 'PipelinePreview'], 'remote-navigation.js': ['RemoteNavigation'], 'navigation-profiles.js': ['NavigationProfiles'], 'model-tuning.js': ['ModelTuning'], 'perception-models.js': ['PerceptionModels'],
     'camera-power.js': ['CameraPower'], 'posture.js': ['Posture'], 'manual-settings.js': ['ManualSettings'],
     'control-camera.js': ['ControlCamera'], 'tasks.js': ['Tasks'], 'devices.js': ['Devices'], 'system.js': ['System'],
     'navigation.js': ['Navigation'], 'calibration.js': ['Calibration'], 'chat.js': ['Chat'], 'overview.js': ['Overview'] };
@@ -149,6 +149,7 @@ test('full operator bootstrap presents mixed capabilities and refreshes stale ev
 
 test('navigation bootstrap routes acknowledgements, malformed event data and stream failures safely', async () => {
   const f = await application('navigation'), nav = f.instances.get('Navigation');
+  assert.ok(f.instances.has('ModelTuning'));
   f.receive({topic: 'motion.state', data: '{bad'});
   assert.equal(nav.lastEvent.data, '{bad');
   f.receive({topic: 'motion.ack', data: '{"status":"rejected"}', ts: 7});

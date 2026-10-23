@@ -5,24 +5,35 @@ from flask import current_app, jsonify, request
 from services import navigation_config
 
 
+def _present_config(config):
+    from services.camera_pipeline_store import snapshot as camera_configuration
+    from services.navigation_profiles import catalog
+    from services.perception_tuning import presentation
+
+    eligible = camera_configuration()["profile"]["analysis_location"] == "venom"
+    behavior = catalog(config.get("behavior"), config.get("perception"))
+    behavior.update(execution_eligible=eligible, reason="" if eligible else "navigation_profile_local_executor")
+    return {
+        **config,
+        "behavior_catalog": behavior,
+        "model_tuning_supported": True,
+        "perception_tuning": presentation(config),
+    }
+
+
 def config_handler():
     try:
         if request.method == "GET":
-            from services.navigation_profiles import catalog
-
             config = navigation_config.snapshot()
-            return jsonify({**config, "behavior_catalog": catalog(config.get("behavior"))}), 200
+            return jsonify(_present_config(config)), 200
         data = navigation_config.configure(request.get_json(silent=True))
-        from services.navigation_profiles import catalog
-
-        return jsonify(
-            {"ok": True, "persisted": True, "config": {**data, "behavior_catalog": catalog(data.get("behavior"))}}
-        ), 200
+        return jsonify({"ok": True, "persisted": True, "config": _present_config(data)}), 200
     except ValueError as exc:
         code = str(exc)
         return jsonify({"error": code}), 409 if code in {
             "navigation_configuration_conflict",
             "navigation_profile_requires_stopped",
+            "navigation_profile_local_executor",
             "compute_stop_goals_first",
             "navigation_stop_goals_first",
             "navigation_model_selection_required",

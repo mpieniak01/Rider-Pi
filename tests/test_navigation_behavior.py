@@ -258,3 +258,24 @@ def test_exact_pair_capability_is_accepted_without_actuation():
     from apps.compute.stream_prepare import _require_temporal
 
     _require_temporal({"temporal_navigation_v1": True}, 1)
+
+
+@pytest.mark.parametrize(
+    "received",
+    [
+        {**DEFAULT_BEHAVIOR, "profile_id": "fluid"},
+        {"profile_id": "legacy"},
+        None,
+    ],
+)
+def test_legacy_rejects_replies_explicitly_using_another_profile(received):
+    from services.navigation_behavior import reply_valid
+
+    assert not reply_valid({"behavior": DEFAULT_BEHAVIOR}, {"action": "go", "state": "clear", "behavior": received})
+
+
+def test_legacy_keeps_old_wire_and_correct_explicit_profile():
+    from services.navigation_behavior import reply_valid
+
+    assert reply_valid({}, {"action": "go", "state": "clear"})
+    assert reply_valid({}, {"action": "go", "state": "clear", "behavior": DEFAULT_BEHAVIOR})

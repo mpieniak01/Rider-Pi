@@ -82,7 +82,9 @@ class NavigationCycle:
             "deadline_ms": self.policy["decision_budget_ms"],
             **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
         }
-        meta["perception"] = self.policy["perception"]
+        meta["perception"] = dict(self.policy["perception"])
+        if not meta["perception"].get("semantic_models"):
+            meta["perception"].pop("semantic_models", None)
         from services.navigation_behavior import active
 
         if active(self.policy):

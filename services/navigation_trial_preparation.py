@@ -247,6 +247,7 @@ class TrialPreparation:
             max_age_ms=config.get("decision_budget_ms", 300),
             **({"journey_version": 1} if self.is_journey else {}),
             **({"temporal_version": 1} if config.get("behavior", {}).get("profile_id", "legacy") != "legacy" else {}),
+            **({"model_tuning_version": 1} if config.get("perception", {}).get("semantic_models") else {}),
         )
         self.guard()
         return config

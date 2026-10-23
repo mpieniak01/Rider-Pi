@@ -40,6 +40,7 @@ def idle(tmp_path, monkeypatch):
         "output": {"lx": 0, "az": 0},
     }
     monkeypatch.setattr(selection, "read_status", lambda **kw: copy.deepcopy(safety))
+    monkeypatch.setattr("services.safety_contract.read_status", lambda **kw: copy.deepcopy(safety))
     return safety, state, path
 
 

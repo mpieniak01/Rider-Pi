@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 const sourceUrl = new URL('../web/assets/operator/navigation-profiles.js', import.meta.url);
 const raw = (await readFile(sourceUrl, 'utf8')).replace(/^import .*;$/gm, '').replaceAll('export function', 'function').replace('export class', 'class');
 const messagesRaw = (await readFile(new URL('../web/assets/operator/navigation-profile-messages.js', import.meta.url), 'utf8')).replaceAll('export ', '');
-function fixture({ supported = true, state = 'DISARMED', running = false, failure = null, locale = 'en' } = {}) {
+function fixture({ supported = true, state = 'DISARMED', running = false, failure = null, locale = 'en', provider = 'venom' } = {}) {
   const calls = [], nodes = {}, shown = [];
   const node = id => nodes[id] ??= { value: '', dataset: {}, disabled: false, textContent: '', children: [], listeners: {},
     addEventListener(type, action) { this.listeners[type] = action; },
@@ -31,7 +31,7 @@ function fixture({ supported = true, state = 'DISARMED', running = false, failur
         policy = { ...policy, revision: policy.revision + 1, mode: 'observe', verified: false, behavior: structuredClone(options.body.values.behavior) };
         policy.behavior_catalog = catalog(); return { data: {ok: true, persisted: true, config: structuredClone(policy)} };
       }
-      return { data: structuredClone(path.endsWith('config') ? policy : status) };
+      return { data: structuredClone(path.endsWith('config') ? policy : path.endsWith('pipeline') ? { revision: 4, profile: { analysis_location: provider, local_engine: 'canny' } } : status) };
     } });
   vm.runInContext(messagesRaw + ';globalThis.t=profileText;', context);
   const Class = vm.runInContext(raw + ';NavigationProfiles', context, { filename: sourceUrl.href });
@@ -52,13 +52,13 @@ test('new profile widget makes no mutation on construction, loading or refresh',
   assert.equal(f.calls.some(row => row.method === 'POST'), false);
   assert.match(f.node('navigation-profile-current').textContent, /Previous/);
 });
-test('missing capability exposes only disabled legacy; unavailable profiles cannot be sent', async () => {
+test('missing capability explains all disabled choices without granting an unavailable profile', async () => {
   const f = fixture({ supported: false }); await f.panel.load();
-  assert.equal(f.node('navigation-profile').children.length, 1);
+  assert.equal(f.node('navigation-profile').children.length, 4);
   assert.equal(f.node('navigation-profile').disabled, true);
   f.choose('fluid'); await f.panel.apply();
   assert.equal(f.calls.some(row => row.method === 'POST'), false);
-  assert.match(f.node('navigation-profile-message').textContent, /compatible profile catalog/);
+  assert.match(f.node('navigation-profile-message').textContent, /Compatible Venom and Rider-Pi updates/);
 });
 test('apply submits only server profile revision and policy CAS, without ARM, camera or movement', async () => {
   const f = fixture(); await f.panel.load(); f.choose('fluid'); await f.panel.apply();
@@ -121,4 +121,15 @@ test('all new controls have Polish, English and German text', async () => {
     assert.ok(f.node('navigation-profile-description').textContent.length > 20);
     assert.equal(f.node('navigation-profile-description').textContent.includes('behavior.'), false);
   }
+});
+
+test('local Pi algorithms block host temporal profiles while retaining a supported Legacy rollback', async () => {
+  const f = fixture({ provider: 'local' }); await f.panel.load(); f.choose('fluid'); await f.panel.apply();
+  assert.equal(f.calls.some(row => row.method === 'POST'), false);
+  assert.equal(f.node('navigation-profile-apply').disabled, true);
+  assert.match(f.node('navigation-profile-message').textContent, /local Rider-Pi algorithm: canny/);
+  f.changePolicy({ behavior: { version: 1, profile_id: 'fluid', profile_revision: 1 } });
+  await f.panel.refresh(); f.choose('legacy'); await f.panel.apply();
+  assert.equal(f.calls.filter(row => row.method === 'POST').length, 1);
+  assert.equal(f.policy().behavior.profile_id, 'legacy');
 });

@@ -109,3 +109,37 @@ tego samego profilu; czas odczytu HTTP nie zastępuje czasu przechwycenia.
 
 
 Powiązane: [profile nawigacji i SLOW](navigation-profiles.md).
+
+## Poziom ostrożności i ustawienia wybranego modelu
+
+Oba panele pokazują **Poziom ostrożności** przy wyborze percepcji, nad kamerą:
+Legacy, Ostrożny, Zrównoważony i Płynny. **Ustawienia wybranego modelu** zawierają
+progi DA2 albo powierzchnię podłoga/podłoga + dywan oraz cztery opcjonalne progi
+segmentera. Pi zapisuje wersjonowaną konfigurację, Venom zarządza wagami i
+inferencją. Dopiero Zastosuj zapisuje wybór. Zapis z drugiego panelu unieważnia
+nieaktualny szkic.
+
+`perception.semantic_models` przechowuje osobne wpisy
+`segformer-b0-ade20k` i `yolo26n-sem-ade20k`: `version:1`,
+`surface:floor_only|floor_rug`, opcjonalne `pixel_confidence`,
+`min_floor_fraction`, `max_uncertain_fraction`, `min_region_fraction`.
+Null dziedziczy profil. Klasy ADE20K: podłoga=3, dywan=28; dywan jest przejezdny
+wyłącznie po jawnym wyborze. Zmiana modelu zachowuje pozostałe wpisy.
+Legacy SegFormer bez model_id również ma edytor. Nieznany silnik nie jest
+odgadywany. Lokalny Canny/SSD/TFLite pokazuje rzeczywistego dostawcę; nowe
+profile czasowe Venoma są tam niedostępne, ale powrót do Legacy jest możliwy.
+
+Zapis wymaga zatrzymanych pętli i świeżego potwierdzenia postoju. CAS chroni
+przed nadpisaniem zmian drugiego panelu. Zapis usuwa poprzedni odbiór modelu,
+kalibracji i obwiedni, ustawia obserwację; nie uruchamia kamery ani robota.
+Jawnie wybrane modele semantyczne pozostają obserwacyjne.
+Niepusty słownik ustawień wymaga capability hosta
+`semantic_model_policy_v1`, także po przełączeniu na DA2. Puste słowniki są
+pomijane w starym protokole. Odpowiedź nie może wskazywać profilu innego niż
+zapisany na Pi.
+
+Powrót na bieżącym kodzie: zastosuj Legacy i poprzednie ustawienia z aktualną
+rewizją, następnie wykonaj nową obserwację/odbiór. Przed cofnięciem kodu, który
+nie zna nowych pól, zachowaj konfigurację i wykonaj migrację behavior oraz
+semantic_models przy zatrzymanych pętlach, w trybie obserwacji. Nie odtwarzaj
+wcześniejszej zgody na jazdę.

@@ -34,7 +34,7 @@ function errorKey(error) {
 }
 export class NavigationProfiles {
   constructor(safety) {
-    this.safety = safety; this.policy = null; this.status = null;
+    this.safety = safety; this.policy = null; this.status = null; this.pipeline = null;
     this.draft = null; this.editBase = null; this.busy = false; this.epoch = 0; this.error = ''; this.saved = null;
     const select = document.getElementById('navigation-profile');
     select?.addEventListener('focus', () => { this.editBase = this.base(); });
@@ -49,7 +49,7 @@ export class NavigationProfiles {
     document.getElementById('navigation-profile-apply')?.addEventListener('click', () => void this.apply());
     document.getElementById('navigation-profile-refresh')?.addEventListener('click', () => void this.refresh());
     this.poller = poll(() => this.load(), { interval: 3000, onError: () => {
-      this.policy = null; this.status = null; this.error = 'behavior.block.stale'; this.render();
+      this.policy = null; this.status = null; this.pipeline = null; this.error = 'behavior.block.stale'; this.render();
     } });
     window.addEventListener('dashboard:langchange', () => this.render());
     this.render();
@@ -64,16 +64,18 @@ export class NavigationProfiles {
   async load() {
     if (this.busy) return;
     const epoch = this.epoch;
-    const [policy, status] = await Promise.all([
-      request('/api/navigation/config'), request('/api/navigation/status'),
+    const [policy, status, pipeline] = await Promise.all([
+      request('/api/navigation/config'), request('/api/navigation/status'), request('/api/resource/camera/pipeline'),
     ]);
     if (epoch !== this.epoch || this.busy) return;
-    this.policy = policy.data; this.status = status.data;
+    this.policy = policy.data; this.status = status.data; this.pipeline = pipeline.data;
     this.render();
   }
   blocked() {
     if (!profileCatalog(this.policy).supported) return 'behavior.unsupported';
     if (this.stale()) return 'behavior.conflict';
+    if (this.pipeline?.profile?.analysis_location === 'local'
+      && (this.draft?.selection.profile_id || profileCatalog(this.policy).active.profile_id) !== 'legacy') return 'behavior.localOnly';
     const safety = this.safety?.state;
     if (!safety || safety.stale === true || !['ARMED', 'DISARMED', 'ESTOP'].includes(safety.state)
       || this.safety.clockFresh?.() !== true) return 'behavior.block.stale';
@@ -91,13 +93,13 @@ export class NavigationProfiles {
     const catalog = profileCatalog(this.policy), selected = this.draft?.selection.profile_id || catalog.active.profile_id;
     const row = catalog.profiles.find(item => item.id === selected), select = document.getElementById('navigation-profile');
     if (select) {
-      const choices = JSON.stringify([catalog.profiles.map(item => [item.id, item.status]), selected, document.documentElement.lang]);
+      const choices = JSON.stringify([(catalog.supported ? catalog.profiles : ids.map(id => ({ id }))).map(item => [item.id, item.status]), selected, document.documentElement.lang]);
       if (select.dataset.choices !== choices && document.activeElement !== select) {
         select.dataset.choices = choices;
-        select.replaceChildren(...catalog.profiles.map(item => {
+        select.replaceChildren(...(catalog.supported ? catalog.profiles : ids.map(id => ({ id }))).map(item => {
           const option = document.createElement('option'); option.value = item.id;
           option.textContent = t('behavior.profile.' + item.id) + (item.status === 'experimental' ? ' · ' + t('behavior.experimental') : '');
-          option.selected = selected === item.id; return option;
+          option.selected = selected === item.id; option.disabled = !catalog.supported; return option;
         }));
       }
       select.disabled = !catalog.supported || this.busy;
@@ -105,11 +107,13 @@ export class NavigationProfiles {
     text('navigation-profile-current', t('behavior.current', { profile: t('behavior.profile.' + catalog.active.profile_id), revision: this.policy?.revision ?? '—' }));
     text('navigation-profile-draft', this.draft ? t('behavior.draft', { profile: t('behavior.profile.' + selected) }) : '');
     text('navigation-profile-description', t('behavior.description.' + selected));
+    text('navigation-profile-provider-hint', this.pipeline?.profile?.analysis_location === 'local'
+      ? t('behavior.localOnly', { model: this.pipeline.profile.local_engine || '—' }) : '');
     text('navigation-profile-experimental', row?.status === 'experimental' ? t('behavior.experimentalHint') : '');
     text('navigation-profile-parameters', catalog.supported ? JSON.stringify(row?.parameters || {}, null, 2) : '');
     text('navigation-profile-hash', catalog.supported ? t('behavior.effectiveHash') + ': ' + catalog.effective_policy_sha256 : '');
     const block = this.blocked();
-    text('navigation-profile-message', this.error || block ? t(this.error || block) : this.saved === this.policy?.revision ? t('behavior.saved', { revision: this.saved }) : '');
+    text('navigation-profile-message', this.error || block ? t(this.error || block, { model: this.pipeline?.profile?.local_engine || '—' }) : this.saved === this.policy?.revision ? t('behavior.saved', { revision: this.saved }) : '');
     const apply = document.getElementById('navigation-profile-apply'), refresh = document.getElementById('navigation-profile-refresh');
     const changed = this.draft && (selected !== catalog.active.profile_id || this.draft.selection.profile_revision !== catalog.active.profile_revision);
     if (apply) { apply.textContent = t(this.busy ? 'behavior.saving' : 'behavior.apply'); apply.title = t('behavior.applyHint'); apply.disabled = !changed || !!block; }

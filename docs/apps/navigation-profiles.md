@@ -76,3 +76,6 @@ without behavior, preserve configuration and, while idle/disarmed, remove only
 that field and reset mode/verified/calibration_id/model_sha256/sweep_verified to
 an unapproved observation policy. Never restore movement approval from a backup.
 Model identity migration remains separate.
+
+
+[Per-model settings and operator placement / Ustawienia modeli i położenie w panelu](perception-models.md).

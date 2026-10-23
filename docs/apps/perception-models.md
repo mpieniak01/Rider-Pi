@@ -104,3 +104,35 @@ restarts of the same profile. HTTP read time never replaces capture time.
 
 
 Related: [navigation profiles and SLOW](navigation-profiles.md).
+
+## Visible caution selector and per-model settings
+
+Both operator panels expose **Caution level** (Legacy/Cautious/Balanced/Fluid)
+beside perception, above the camera. **Selected model settings** contains DA2
+residual/outlier/slope or semantic surface and four optional threshold overrides.
+The Pi owns the persisted revision; Venom owns models and inference. Drafts
+remain local until Apply. External saves invalidate stale drafts.
+
+`perception.semantic_models` is keyed by `segformer-b0-ade20k` and
+`yolo26n-sem-ade20k`. Records contain `version:1`,
+`surface:floor_only|floor_rug` and nullable `pixel_confidence`,
+`min_floor_fraction`, `max_uncertain_fraction`, `min_region_fraction`.
+Null inherits the selected caution profile. ADE20K floor=3; rug=28 is traversable
+only on explicit floor-and-rug selection. Other model records survive switching.
+Legacy SegFormer with an empty model ID is supported; unknown engines are not
+guessed. Local Canny/SSD/TFLite displays its actual provider and cannot apply
+host temporal profiles; Legacy rollback remains available.
+
+Saving settings/profile requires stopped goals and a fresh stationary executor,
+uses CAS, revokes old calibration/model/sweep approval and persists observation.
+It neither starts the camera nor restores ARM. Explicit semantic models remain
+observation-only. New host capability `semantic_model_policy_v1` is required for
+a nonempty per-model dictionary, including one retained while DA2 is selected.
+Empty dictionaries are omitted from legacy frame metadata. Replies cannot claim
+a different caution profile from the authoritative Pi policy.
+
+For rollback on current code, explicitly apply Legacy and restore the desired
+model settings with a fresh revision; new observation/acceptance is required.
+Before downgrading to code predating these optional fields, preserve the file,
+stop loops and migrate behavior/semantic_models in a controlled observation-only
+configuration. Never restore a saved driving approval.

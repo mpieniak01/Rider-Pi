@@ -68,33 +68,51 @@ def validate_behavior(value):
     return dict(value)
 
 
-def parameters(value):
+def parameters(value, perception=None):
     behavior = validate_behavior(value)
     profile = behavior["profile_id"]
-    return {} if profile == "legacy" else {**_BASE, **_OVERRIDES[profile]}
+    if profile == "legacy":
+        return {}
+    result = {**_BASE, **_OVERRIDES[profile]}
+    if perception is not None:
+        from services.perception_tuning import (
+            SEMANTIC_MODELS,
+            active_model_id,
+            has_semantic_tuning,
+            semantic_parameters,
+        )
+
+        if active_model_id(perception) in SEMANTIC_MODELS and has_semantic_tuning(perception):
+            result.update(semantic_parameters(perception, behavior))
+    return result
 
 
-def policy_digest(value):
+def policy_digest(value, perception=None):
     behavior = validate_behavior(value)
-    payload = {"behavior": behavior, "parameters": parameters(behavior)}
+    payload = {"behavior": behavior, "parameters": parameters(behavior, perception)}
+    if behavior["profile_id"] == "legacy" and perception is not None:
+        from services.perception_tuning import has_semantic_tuning, semantic_parameters
+
+        if has_semantic_tuning(perception):
+            payload["semantic"] = semantic_parameters(perception, behavior)
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()
 
 
-def catalog(value=None):
+def catalog(value=None, perception=None):
     active = validate_behavior(DEFAULT_BEHAVIOR if value is None else value)
     return {
         "version": 1,
         "supported": True,
         "active": active,
-        "effective_policy_sha256": policy_digest(active),
+        "effective_policy_sha256": policy_digest(active, perception),
         "profiles": [
             {
                 "id": name,
                 "profile_revision": 1,
                 "status": "legacy" if name == "legacy" else "experimental",
-                "parameters": parameters({**DEFAULT_BEHAVIOR, "profile_id": name}),
+                "parameters": parameters({**DEFAULT_BEHAVIOR, "profile_id": name}, perception),
             }
             for name in ("legacy", *_OVERRIDES)
         ],

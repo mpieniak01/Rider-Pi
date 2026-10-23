@@ -84,10 +84,13 @@ def _validated_perception(perception):
     if (
         not isinstance(perception, dict)
         or not required <= set(perception)
-        or set(perception) - required - IDENTITY_FIELDS
+        or set(perception) - required - IDENTITY_FIELDS - {"semantic_models"}
     ):
         raise ValueError("navigation_perception_invalid")
     validate_identity(perception)
+    from services.perception_tuning import validate_semantic_models
+
+    validate_semantic_models(perception.get("semantic_models", {}))
     if not isinstance(perception["engine"], str) or perception["engine"] not in {"segformer", "depth_plane"}:
         raise ValueError("navigation_perception_invalid")
     for key, low, high in (("residual_limit", 0.01, 0.15), ("outlier_limit", 0.0, 0.02), ("slope_min", 1.0, 4.0)):
@@ -284,10 +287,18 @@ def configure_locked(body):
             raise ValueError("navigation_model_selection_required")
         behavior = validate_behavior(proposed.get("behavior"))
         profile_changed = behavior != old.get("behavior", DEFAULT_BEHAVIOR)
-        if profile_changed:
+        perception_changed = proposed_perception != old["perception"]
+        if profile_changed and behavior["profile_id"] != "legacy":
+            from services.camera_pipeline_store import snapshot as camera_configuration
+
+            if camera_configuration()["profile"]["analysis_location"] != "venom":
+                raise ValueError("navigation_profile_local_executor")
+        if profile_changed or perception_changed:
             from services.navigation_behavior import require_stopped
 
             require_stopped()
+        tuning_changed = proposed_perception.get("semantic_models", {}) != old["perception"].get("semantic_models", {})
+        if profile_changed or tuning_changed:
             proposed.update(mode="observe", verified=False, calibration_id="", model_sha256="")
             proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
         engine_changed = proposed_perception["engine"] != old["perception"]["engine"]

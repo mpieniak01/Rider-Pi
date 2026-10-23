@@ -520,6 +520,7 @@ class NavigationRunner(NavigationCycle):
         prepared = prepare_stream(
             selection=self.selection,
             max_age_ms=self.policy["decision_budget_ms"],
+            **({"model_tuning_version": 1} if self.policy["perception"].get("semantic_models") else {}),
             **(
                 {"temporal_version": 1}
                 if self.policy.get("behavior", {}).get("profile_id", "legacy") != "legacy"

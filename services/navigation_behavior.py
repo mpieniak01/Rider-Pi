@@ -36,13 +36,21 @@ def active(config):
 
 def reply_valid(config, decision):
     if not active(config):
+        if "behavior" in decision:
+            try:
+                if validate_behavior(decision["behavior"]) != DEFAULT_BEHAVIOR:
+                    return False
+            except ValueError:
+                return False
         return decision.get("action") != "slow"
     try:
         expected = validate_behavior(config["behavior"])
         received = validate_behavior(decision.get("behavior"))
     except (ValueError, KeyError):
         return False
-    if received != expected or decision.get("effective_policy_sha256") != policy_digest(expected):
+    if received != expected or decision.get("effective_policy_sha256") != policy_digest(
+        expected, config.get("perception")
+    ):
         return False
     if decision.get("action") == "stop":
         return True
@@ -63,7 +71,7 @@ def reply_valid(config, decision):
     if decision.get("action") == "slow":
         return (
             temporal.get("risk") == "caution"
-            and factor == parameters(expected)["slow_speed_factor"]
+            and factor == parameters(expected, config.get("perception"))["slow_speed_factor"]
             and decision.get("state") in {"clear", "obstacle", "unknown"}
         )
     if decision.get("action") == "go":
