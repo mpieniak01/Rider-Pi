@@ -13,6 +13,7 @@ from collections import OrderedDict
 from common.compute_url import validate_compute_url
 
 from .errors import ComputeError
+from .http_budget import apply_http_budget
 
 IDENTITY_PATH = "/api/v1/transport/identity"
 _GATES = OrderedDict()
@@ -99,9 +100,7 @@ class PeerHTTPTransport:
         remaining = deadline - self.clock()
         if remaining <= 0:
             raise ComputeError("transport_timeout", 504)
-        self.connection.timeout = remaining
-        if self.connection.sock is not None:
-            self.connection.sock.settimeout(remaining)
+        apply_http_budget(self.connection, deadline, self.clock)
         return remaining
 
     def _verify(self, deadline):

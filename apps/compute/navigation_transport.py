@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from apps.compute.client import ComputeError
 from common.compute_url import validate_compute_url
 
+from .http_budget import CaptureBudgetExpired, apply_http_budget
 from .lan_transport import PeerHTTPTransport
 
 MAX_RESPONSE = 16384
@@ -97,8 +98,13 @@ class NavigationHTTPTransport:
         parsed = self._validated_target(request)
         if self.peer is not None:
             return self._open_peer(request, parsed, timeout)
+        deadline = self.clock() + timeout
         connection = self._prepare_connection(parsed, timeout)
         try:
+            # Connect, request, headers and body share one original budget.
+            if connection.sock is None and callable(getattr(connection, "connect", None)):
+                connection.connect()
+            apply_http_budget(connection, deadline, self.clock)
             self.requests += 1
             connection.request("POST", parsed.path, body=request.data, headers=dict(request.header_items()))
             response = connection.getresponse()
@@ -119,6 +125,10 @@ class NavigationHTTPTransport:
             raise
         except (OSError, http.client.HTTPException) as exc:
             self._discard()
+            if isinstance(exc, CaptureBudgetExpired):
+                raise
+            if isinstance(exc, (TimeoutError, socket.timeout)) and self.clock() >= deadline:
+                raise CaptureBudgetExpired("navigation_capture_deadline") from None
             if isinstance(exc, (TimeoutError, socket.timeout)):
                 raise TimeoutError("navigation_transport_timeout") from None
             raise urllib.error.URLError("navigation_transport_unavailable") from None
@@ -127,6 +137,7 @@ class NavigationHTTPTransport:
             raise
 
     def _open_peer(self, request, parsed, timeout):
+        deadline = self.clock() + timeout
         try:
             status, headers, body = self.peer.request(
                 "POST",
@@ -139,6 +150,8 @@ class NavigationHTTPTransport:
             )
             self.generation = self.peer.generation
         except ComputeError as exc:
+            if exc.code == "transport_timeout" and self.clock() >= deadline:
+                raise CaptureBudgetExpired("navigation_capture_deadline") from None
             if exc.code == "transport_generation_changed":
                 # The next explicitly requested capture may use this connection;
                 # the current frame/lease is rejected, never replayed.

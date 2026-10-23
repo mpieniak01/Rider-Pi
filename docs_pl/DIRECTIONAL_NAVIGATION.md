@@ -59,6 +59,26 @@ referencja i liczniki mieszczą się w istniejącym limicie odpowiedzi/nagłówk
 Kierunek wybiera stronę ograniczonej korekty, nie metryczny yaw ani certyfikowany
 tor dynamiczny. Łączny vx/yaw, obrys i hamowanie wymagają odbioru fizycznego.
 
+## Budżet HTTP i krótka przerwa analizy
+
+Oczekiwanie HTTP wykorzystuje pozostały budżet klatki po odjęciu jej wieku
+i przygotowania żądania. Połączenie, wysłanie żądania, nagłówki i treść odpowiedzi
+mają jeden termin monotoniczny. Odbiór kolejnego fragmentu nie odnawia timeoutu.
+Nie ponawiamy POST tej samej klatki.
+
+W ciągłej podróży wyczerpaną klatkę można odrzucić po wygaśnięciu poprzedniego
+zezwolenia na silniki, jeśli nadal trwa dotychczasowe okno oczekiwania na analizę.
+Robot pozostaje w postoju; następna próba wymaga nowej klatki. Spóźnione GO nie
+jest wykonywane i nie odnawia żadnego terminu. Brak nowej poprawnej decyzji przed
+końcem pierwotnego okna nadal kończy podróż. STOP operatora, utrata uprawnień,
+zmiana sesji/modelu i błędna tożsamość odpowiedzi zachowują działanie końcowe.
+Ograniczone czasowo próby bez ciągłej podróży zachowują wcześniejsze zachowanie.
+
+Pole statusu `request_attempt` zawiera identyfikator run/sequence, stan
+pending/completed/failed oraz bieżące elapsed_ms i capture_age_ms.
+request_roundtrip_ms i response_age_ms są zerowane przed nowym żądaniem,
+a po błędzie opisują tę nieudaną próbę zamiast poprzedniego poprawnego GO.
+
 ## Testy i dalszy odbiór danych
 
 Testy używają rzeczywistego kodu lease/runner z rejestrem wyjść zamiast sprzętu.

@@ -7,6 +7,8 @@ import urllib.error
 
 from apps.compute.client import ComputeError
 
+from .http_budget import CaptureBudgetExpired
+
 
 class NavigationCycle:
     def _run_cycle(self, source):
@@ -106,17 +108,28 @@ class NavigationCycle:
 
     def _request_decision(self, meta, frame, captured):
         request_started = self.clock()
+        self.request_roundtrip_ms = self.response_age_ms = None
+        self.request_attempt = {
+            "run_id": meta.get("run_id"),
+            "sequence": meta.get("sequence"),
+            "state": "pending",
+            "started_monotonic": request_started,
+            "captured_monotonic": captured,
+        }
         try:
             decision = self.request(meta, frame["data"], frame["content_type"])
-        except (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError) as exc:
-            if not self._retry_observation(exc):
+        except Exception as exc:
+            self._finish_request("failed", type(exc).__name__)
+            bounded_retry = self._retry_capture_budget(exc, meta)
+            network_error = isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
+            if not bounded_retry and (not network_error or not self._retry_observation(exc)):
                 raise
             detail = {}
             if isinstance(exc, urllib.error.HTTPError):
                 from apps.compute.stream_prepare import http_error_code
 
                 detail = {"http_status": exc.code, "transport_error": http_error_code(exc)}
-            reason = detail.get("transport_error")
+            reason = "navigation_capture_budget_expired" if bounded_retry else detail.get("transport_error")
             if reason is None or reason.startswith("http_"):
                 reason = "vision_observation_transport_retry"
             self.last_result = {
@@ -131,16 +144,54 @@ class NavigationCycle:
                 "valid_for_ms": 0,
                 **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
             }
-            self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
-            self.response_age_ms = round((self.clock() - captured) * 1000, 2)
             self._status(self.last_result)
-            self.closed.wait(0.2)
+            if not bounded_retry:
+                self.closed.wait(0.2)
             return False, None
-        self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
-        self.response_age_ms = round((self.clock() - captured) * 1000, 2)
+        self._finish_request("completed")
         self._check_model_reply(decision, meta)
         self.last_result = decision
         return True, decision
+
+    def _request_diagnostics(self):
+        attempt = dict(self.request_attempt or {})
+        if attempt.get("state") == "pending":
+            attempt["elapsed_ms"] = round((self.clock() - attempt["started_monotonic"]) * 1000, 2)
+            attempt["capture_age_ms"] = round((self.clock() - attempt["captured_monotonic"]) * 1000, 2)
+        return attempt
+
+    def _finish_request(self, state, error=None):
+        self.request_roundtrip_ms = round((self.clock() - self.request_attempt["started_monotonic"]) * 1000, 2)
+        self.response_age_ms = round((self.clock() - self.request_attempt["captured_monotonic"]) * 1000, 2)
+        self.request_attempt = {
+            **self.request_attempt,
+            "state": state,
+            "error": error,
+            "elapsed_ms": self.request_roundtrip_ms,
+            "capture_age_ms": self.response_age_ms,
+        }
+
+    def _retry_capture_budget(self, error, meta):
+        if self.policy["mode"] != "drive" or self.lease.journey is None:
+            return False
+        transient = isinstance(error, CaptureBudgetExpired)
+        if isinstance(error, urllib.error.HTTPError):
+            from .stream_prepare import http_error_code
+
+            transient = error.code in {409, 429} and http_error_code(error) in {
+                "vision_frame_expired",
+                "stream_frame_unavailable",
+                "vision_busy",
+            }
+        if not transient:
+            return False
+        lease = self.lease
+        return (
+            self._authority()
+            and self.run_id == meta.get("run_id")
+            and self.lease is lease
+            and lease.await_fresh_capture()
+        )
 
     def _apply_decision(self, decision, meta, captured):
         frame_id = meta["frame_id"]

@@ -1,0 +1,137 @@
+{
+  "provenance": "Pi recorded trial 2026-10-23; numerical timing only. Last row repeats the previous completed response while the next HTTP request was pending.",
+  "rows": [
+    {
+      "sequence": 40,
+      "sampled": 56234.781633011,
+      "permit": 89.85,
+      "feedback": 282.65,
+      "cycle": 188.8,
+      "rtt": 143.74,
+      "response_age": 181.89,
+      "valid": 143,
+      "latched": false
+    },
+    {
+      "sequence": 41,
+      "sampled": 56234.953827811,
+      "permit": 94.43,
+      "feedback": 283.32,
+      "cycle": 168.41,
+      "rtt": 127.06,
+      "response_age": 180.92,
+      "valid": 142,
+      "latched": false
+    },
+    {
+      "sequence": 42,
+      "sampled": 56235.109211772,
+      "permit": 115.82,
+      "feedback": 281.25,
+      "cycle": 151.5,
+      "rtt": 108.97,
+      "response_age": 155.47,
+      "valid": 166,
+      "latched": false
+    },
+    {
+      "sequence": 43,
+      "sampled": 56235.240566948,
+      "permit": 102.32,
+      "feedback": 285.91,
+      "cycle": 128.56,
+      "rtt": 90.78,
+      "response_age": 173.4,
+      "valid": 149,
+      "latched": false
+    },
+    {
+      "sequence": 44,
+      "sampled": 56235.373510561,
+      "permit": 146.15,
+      "feedback": 280.7,
+      "cycle": 128.73,
+      "rtt": 85.93,
+      "response_age": 125.03,
+      "valid": 192,
+      "latched": false
+    },
+    {
+      "sequence": 45,
+      "sampled": 56235.601873665,
+      "permit": 35.64,
+      "feedback": 283.05,
+      "cycle": 225.34,
+      "rtt": 183.29,
+      "response_age": 237.47,
+      "valid": 91,
+      "latched": false
+    },
+    {
+      "sequence": 46,
+      "sampled": 56235.762822986,
+      "permit": 110.39,
+      "feedback": 285.39,
+      "cycle": 157.25,
+      "rtt": 119.37,
+      "response_age": 165.07,
+      "valid": 156,
+      "latched": false
+    },
+    {
+      "sequence": 47,
+      "sampled": 56235.953064119,
+      "permit": 96.94,
+      "feedback": 284.96,
+      "cycle": 187.25,
+      "rtt": 147.26,
+      "response_age": 178.73,
+      "valid": 183,
+      "latched": false
+    },
+    {
+      "sequence": 48,
+      "sampled": 56236.085713604,
+      "permit": 141.06,
+      "feedback": 283.05,
+      "cycle": 126.63,
+      "rtt": 84.06,
+      "response_age": 129.43,
+      "valid": 192,
+      "latched": false
+    },
+    {
+      "sequence": 49,
+      "sampled": 56236.284504342,
+      "permit": 60.12,
+      "feedback": 281.32,
+      "cycle": 194.76,
+      "rtt": 148.19,
+      "response_age": 209.11,
+      "valid": 94,
+      "latched": false
+    },
+    {
+      "sequence": 50,
+      "sampled": 56236.41188052,
+      "permit": 109.52,
+      "feedback": 282.71,
+      "cycle": 123.8,
+      "rtt": 83.09,
+      "response_age": 164.09,
+      "valid": 147,
+      "latched": false
+    },
+    {
+      "sequence": 50,
+      "sampled": 56236.774224677,
+      "permit": 0,
+      "feedback": 0,
+      "cycle": 358.08,
+      "rtt": 83.09,
+      "response_age": 164.09,
+      "valid": 147,
+      "latched": true
+    }
+  ]
+}
