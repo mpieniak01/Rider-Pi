@@ -67,6 +67,7 @@ class NavigationRunner(NavigationCycle):
         self.input_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
+        self.request_attempt = None
         self.run_started_monotonic = None
         self.cycle_started = clock()
         self.cycle_timings_ms = {}
@@ -323,6 +324,7 @@ class NavigationRunner(NavigationCycle):
             self.closed.set()
 
     def _request(self, meta, payload, mime):
+        prepared_at = self.clock()
         base = self.selection["url"].rstrip("/")
         if not base.endswith("/api/v1/rider/compute"):
             base += "/api/v1/rider/compute"
@@ -340,10 +342,15 @@ class NavigationRunner(NavigationCycle):
                 "X-Rider-Vision": json.dumps(meta),
             },
         )
-        timeout = self.policy["decision_budget_ms"] / 1000
+        timeout = (self.policy["decision_budget_ms"] - float(meta.get("age_ms", 0))) / 1000
+        timeout -= max(0.0, self.clock() - prepared_at)
         if self.policy["mode"] == "observe":
             # Observation cannot actuate; Wi-Fi jitter must not become a drive permit.
             timeout = max(1.0, timeout)
+        if timeout <= 0:
+            from .http_budget import CaptureBudgetExpired
+
+            raise CaptureBudgetExpired("navigation_capture_deadline")
         if self.decision_transport is None:
             self.decision_transport = NavigationHTTPTransport(
                 self.selection["url"],
@@ -423,6 +430,7 @@ class NavigationRunner(NavigationCycle):
             "artifact_sha256": self.policy["perception"].get("artifact_sha256"),
             "decision": decision,
             "request_roundtrip_ms": self.request_roundtrip_ms,
+            "request_attempt": self._request_diagnostics(),
             "decision_transport": self.decision_transport.status()
             if callable(getattr(self.decision_transport, "status", None))
             else None,

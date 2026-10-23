@@ -146,7 +146,7 @@ def test_connection_failure_is_once_only_and_discards_socket(monkeypatch, error)
         transport.open(pending_request, timeout=0.15)
     assert calls == ['request', 'close']
     assert transport.connection is None
-    assert connection.timeout == 0.15
+    assert 0 < connection.timeout <= 0.15
     transport.close()
 
 

@@ -501,9 +501,9 @@ def test_native_reference_recorded_delay_retains_original_capture_deadline(
         def open(self, req, *, timeout):
             assert req.full_url.endswith("/vision/decision-reference")
             assert req.get_method() == "POST"
-            assert timeout == pytest.approx(0.3)
             payload = json.loads(req.data)
             meta, source = payload["frame"], payload["source"]
+            assert timeout == pytest.approx((300 - meta["age_ms"]) / 1000)
             assert meta["frame_id"] != source["frame_id"]
             assert meta["sequence"] != source["sequence"]
             assert meta["deadline_ms"] == 300

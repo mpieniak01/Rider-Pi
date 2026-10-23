@@ -71,6 +71,26 @@ class DecisionLease:
             self.journey.waiting(self.reason, reset_clear=False)
         return True
 
+    def await_fresh_capture(self):
+        with self.lock:
+            return self._await_fresh_capture(self.clock())
+
+    def _await_fresh_capture(self, now):
+        if (
+            self.latched
+            or self.journey is None
+            or not self.journey.active
+            or not self.feedback_wait
+            or self.feedback_deadline is None
+            or now >= self.feedback_deadline
+            or self.deadline is not None
+            and now < self.deadline
+        ):
+            return False
+        # The previous bounded motor output has already expired. Drop this
+        # capture without renewing any deadline or submitting another command.
+        return self._wait_for_feedback(now)
+
     def _defer_short_permit(self, now):
         if not self.feedback_wait:
             self._halt("decision_budget_exhausted")
@@ -194,7 +214,6 @@ class DecisionLease:
             or now < captured_monotonic
             or type(sequence) is not int
             or sequence <= self.last_seq
-            or remaining <= 0
         ):
             self._halt("decision_invalid_or_expired")
             return None
@@ -224,6 +243,22 @@ class DecisionLease:
             and not self._ground_evidence(decision)
         ):
             self._halt("navigation_ground_evidence_invalid")
+            return None
+        if remaining <= 0:
+            # A correctly bound late GO is never actuated. A continuous journey
+            # may await a NEW capture inside its existing feedback window only.
+            if (
+                decision["action"] == "go"
+                and decision.get("state") == "clear"
+                and type(decision.get("clear_count")) is int
+                and decision["clear_count"] >= 3
+                and self.config["mode"] == "drive"
+                and self.config["verified"] is True
+                and decision.get("model_sha256") == self.config["model_sha256"]
+                and self._await_fresh_capture(now)
+            ):
+                return None
+            self._halt("decision_invalid_or_expired")
             return None
         return identity, remaining
 
