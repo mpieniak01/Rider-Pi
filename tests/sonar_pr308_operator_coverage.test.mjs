@@ -103,7 +103,7 @@ test('footer theme fallback changes dataset and synchronizes both selects withou
 async function application(page = 'control') {
   const f = environment(['actuator-capabilities', 'operator-message', 'last-event', 'chat-send'], page);
   const instances = new Map(), changes = [], stubs = {};
-  const names = { 'camera-pipeline.js': ['CameraPipelineControls', 'PipelinePreview'], 'remote-navigation.js': ['RemoteNavigation'],
+  const names = { 'camera-pipeline.js': ['CameraPipelineControls', 'PipelinePreview'], 'remote-navigation.js': ['RemoteNavigation'], 'navigation-profiles.js': ['NavigationProfiles'], 'perception-models.js': ['PerceptionModels'],
     'camera-power.js': ['CameraPower'], 'posture.js': ['Posture'], 'manual-settings.js': ['ManualSettings'],
     'control-camera.js': ['ControlCamera'], 'tasks.js': ['Tasks'], 'devices.js': ['Devices'], 'system.js': ['System'],
     'navigation.js': ['Navigation'], 'calibration.js': ['Calibration'], 'chat.js': ['Chat'], 'overview.js': ['Overview'] };

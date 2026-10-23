@@ -7,6 +7,7 @@ import json
 
 DEFAULT_BEHAVIOR = {"version": 1, "profile_id": "legacy", "profile_revision": 1}
 _BASE = {
+    "pixel_confidence": 0.75,
     "min_region_fraction": 0.002,
     "thin_span_fraction": 0.15,
     "near_zone_fraction": 0.35,
@@ -16,7 +17,7 @@ _BASE = {
     "enter_frames": 2,
     "enter_ms": 60,
     "release_frames": 3,
-    "release_ms": 120,
+    "release_ms": 100,
     "history_ms": 500,
     "max_gap_ms": 300,
     "max_uncertain_ms": 160,
@@ -25,25 +26,27 @@ _BASE = {
 }
 _OVERRIDES = {
     "cautious": {
+        "pixel_confidence": 0.8,
         "min_region_fraction": 0.001,
         "min_floor_fraction": 0.98,
         "min_near_floor_fraction": 0.99,
         "max_uncertain_fraction": 0.01,
         "enter_frames": 1,
         "enter_ms": 0,
-        "release_ms": 150,
+        "release_ms": 60,
         "max_uncertain_ms": 100,
         "slow_speed_factor": 0.35,
     },
     "balanced": {},
     "fluid": {
+        "pixel_confidence": 0.7,
         "min_region_fraction": 0.003,
         "min_floor_fraction": 0.92,
         "min_near_floor_fraction": 0.95,
         "max_uncertain_fraction": 0.06,
         "enter_frames": 3,
         "enter_ms": 100,
-        "release_ms": 180,
+        "release_ms": 100,
         "max_uncertain_ms": 200,
         "slow_speed_factor": 0.6,
     },

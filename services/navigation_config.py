@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+from contextlib import nullcontext
 from pathlib import Path
 
 from services.compute_config import _lock, _require_idle_goals, _selection_lock, _write
@@ -259,7 +260,14 @@ def configure_locked(body):
         raise ValueError("navigation_configuration_invalid")
     if set(body["values"]) - (set(DEFAULT) - {"protocol_version", "revision"}):
         raise ValueError("navigation_configuration_invalid")
-    with _lock(path()):
+    from apps.motion import manual_settings
+
+    # Match model selection lock order: selection -> executor -> configuration.
+    # STOP bypasses this mutex; non-STOP commands cannot race profile persistence.
+    executor = (
+        manual_settings.locked(blocking=False) if set(body["values"]) & {"behavior", "perception"} else nullcontext()
+    )
+    with executor, _lock(path()):
         old = snapshot()
         if body["revision"] != old["revision"]:
             raise ValueError("navigation_configuration_conflict")
@@ -305,14 +313,12 @@ def configure_locked(body):
         ):
             proposed.update(verified=False, mode="observe")
         if engine_changed:
-            from apps.motion import manual_settings
             from services.perception_selection import _reset_approval, require_idle
 
-            with manual_settings.locked(blocking=False):
-                require_idle()
-                _reset_approval(proposed)
-                data = validate(proposed)
-                _write(path(), data)
+            require_idle()
+            _reset_approval(proposed)
+            data = validate(proposed)
+            _write(path(), data)
         else:
             data = validate(proposed)
             _write(path(), data)

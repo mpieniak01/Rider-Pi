@@ -517,7 +517,15 @@ class NavigationRunner(NavigationCycle):
     def _start_run(self):
         from apps.compute.stream_prepare import prepare_stream
 
-        prepared = prepare_stream(selection=self.selection, max_age_ms=self.policy["decision_budget_ms"])
+        prepared = prepare_stream(
+            selection=self.selection,
+            max_age_ms=self.policy["decision_budget_ms"],
+            **(
+                {"temporal_version": 1}
+                if self.policy.get("behavior", {}).get("profile_id", "legacy") != "legacy"
+                else {}
+            ),
+        )
         source = (
             self.source_factory(
                 require_bytes=False,

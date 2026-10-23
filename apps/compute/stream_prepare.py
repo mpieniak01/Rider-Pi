@@ -134,6 +134,16 @@ def _status_request(selection, base, *, stream):
     )
 
 
+def _require_temporal(status, version):
+    if version is not None and (
+        type(version) is not int
+        or version != 1
+        or not isinstance(status, dict)
+        or status.get("temporal_navigation_v1") is not True
+    ):
+        raise ComputeError("temporal_navigation_update_required", 409)
+
+
 def _require_journey(status, version):
     if version is not None and (
         not isinstance(status, dict)
@@ -152,9 +162,10 @@ def prepare_stream(
     clock=time.monotonic,
     sleep=time.sleep,
     journey_version=None,
+    temporal_version=None,
 ):
     streaming = native()
-    if not streaming and journey_version is None:
+    if not streaming and journey_version is None and temporal_version is None:
         return None
     if journey_version is not None and (type(journey_version) is not int or journey_version != 1):
         raise ComputeError("navigation_journey_update_required", 409)
@@ -167,20 +178,23 @@ def prepare_stream(
             req = _status_request(selection, base, stream=False)
             status = _read_stream_status(opener, req, timeout_s, deadline, clock)
             _require_journey(status, journey_version)
+            _require_temporal(status, temporal_version)
             if snapshot() != config:
                 raise ComputeError("navigation_configuration_changed", 409)
             if clock() >= deadline:
                 raise ComputeError("navigation_stream_prepare_timeout", 504)
             return None
         return _prepare_native_stream(
-            config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version
+            config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version, temporal_version
         )
     finally:
         if owns_opener and hasattr(opener, "close"):
             opener.close()
 
 
-def _prepare_native_stream(config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version):
+def _prepare_native_stream(
+    config, selection, opener, base, deadline, clock, sleep, max_age_ms, journey_version, temporal_version=None
+):
     while clock() < deadline:
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)
@@ -194,6 +208,7 @@ def _prepare_native_stream(config, selection, opener, base, deadline, clock, sle
             break
         status = _read_stream_status(opener, req, remaining, deadline, clock)
         _require_journey(status, journey_version)
+        _require_temporal(status, temporal_version)
         if clock() >= deadline:
             break
         if snapshot() != config:

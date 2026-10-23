@@ -37,6 +37,21 @@
 </div><p id="perception-state" role="status">unknown</p><p id="perception-selected"></p><p id="perception-active"></p><p id="perception-error" role="alert"></p>
 <p data-pl="Canny jest algorytmem krawędzi, a SSD/TFLite detektorami obiektów. Nie są zamiennikami segmentacji podłogi ani potwierdzeniem gotowości do jazdy." data-en="Canny is an edge algorithm; SSD/TFLite are object detectors. They do not provide floor segmentation or prove driving readiness.">Canny jest algorytmem krawędzi, a SSD/TFLite detektorami obiektów. Nie są zamiennikami segmentacji podłogi ani potwierdzeniem gotowości do jazdy.</p>
 </section>
+<section aria-labelledby="navigation-profile-title" class="c-card">
+<h3 id="navigation-profile-title">Profil jazdy</h3>
+<p id="navigation-profile-hint"></p>
+<div class="operator-row">
+<label><span id="navigation-profile-label">Profil do zastosowania</span><select id="navigation-profile" disabled><option value="legacy">Legacy</option></select></label>
+<button id="navigation-profile-apply" type="button" class="c-btn" disabled>Zastosuj profil — obserwacja</button>
+<button id="navigation-profile-refresh" type="button" class="c-btn c-btn-sm">Odśwież profil</button>
+</div>
+<p id="navigation-profile-current" role="status"></p><p id="navigation-profile-draft"></p>
+<p id="navigation-profile-description"></p><p id="navigation-profile-experimental"></p>
+<p id="navigation-profile-message" role="status"></p>
+<details><summary id="navigation-profile-parameters-label">Parametry profilu — tylko odczyt</summary><p id="navigation-profile-hash" class="operator-json"></p><pre id="navigation-profile-parameters" class="operator-json"></pre></details>
+<h3 id="navigation-temporal-title">Ocena obrazu w czasie</h3>
+<pre id="navigation-temporal-state" class="operator-json"></pre>
+</section>
 <button id="remote-load" type="button" class="c-btn" data-pl="Odczytaj ustawienia Pi" data-en="Read Pi settings">Odczytaj ustawienia Pi</button>
 <div class="operator-grid">
 <label>Tryb / Mode <select id="remote-mode"><option value="observe">Obserwacja / Observe</option><option value="drive">Jazda / Drive</option></select></label>
@@ -59,7 +74,7 @@
 
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=perception-models-1"></script>
+<script type="module" src="/web/assets/operator/app.js?v=temporal-navigation-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

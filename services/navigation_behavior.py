@@ -49,7 +49,8 @@ def reply_valid(config, decision):
     temporal = decision.get("temporal")
     if not isinstance(temporal, dict) or temporal.get("version") != 1 or type(temporal["version"]) is not int:
         return False
-    if temporal.get("action") != decision.get("action"):
+    steering = decision.get("action") in {"turn_left", "turn_right", "steer_left", "steer_right"}
+    if temporal.get("action") != decision.get("action") and not steering:
         return False
     if temporal.get("near_guard_clear") is not True:
         return False
@@ -68,4 +69,4 @@ def reply_valid(config, decision):
     if decision.get("action") == "go":
         return temporal.get("risk") == "clear" and factor == 1 and decision.get("state") == "clear"
     # Steering still needs the original independent sector/ground checks.
-    return decision.get("action") in {"turn_left", "turn_right", "steer_left", "steer_right"} and factor == 0
+    return steering and factor == 0 and temporal.get("state") == "obstacle"

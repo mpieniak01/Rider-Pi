@@ -13,7 +13,11 @@ def config_handler():
             config = navigation_config.snapshot()
             return jsonify({**config, "behavior_catalog": catalog(config.get("behavior"))}), 200
         data = navigation_config.configure(request.get_json(silent=True))
-        return jsonify({"ok": True, "persisted": True, "config": data}), 200
+        from services.navigation_profiles import catalog
+
+        return jsonify(
+            {"ok": True, "persisted": True, "config": {**data, "behavior_catalog": catalog(data.get("behavior"))}}
+        ), 200
     except ValueError as exc:
         code = str(exc)
         return jsonify({"error": code}), 409 if code in {
@@ -25,6 +29,8 @@ def config_handler():
             "navigation_model_requires_idle_disarmed",
             "navigation_model_stop_loops_first",
         } else 400
+    except BlockingIOError:
+        return jsonify({"error": "navigation_profile_busy"}), 409
     except OSError:
         return jsonify({"error": "navigation_persistence_failed"}), 503
 

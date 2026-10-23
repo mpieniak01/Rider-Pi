@@ -195,3 +195,66 @@ def test_catalog_does_not_return_mutable_policy_globals():
     first["profiles"][2]["parameters"]["slow_speed_factor"] = 100
     assert parameters(behavior())["slow_speed_factor"] == 0.5
     assert len({policy_digest(behavior(name)) for name in ["legacy", "cautious", "balanced", "fluid"]}) == 4
+
+
+def test_profile_stopped_check_and_atomic_write_share_executor_lock(policy_store, monkeypatch):
+    from contextlib import contextmanager
+
+    from apps.motion import manual_settings
+
+    held = []
+    original_write = navigation_config._write
+
+    @contextmanager
+    def executor(*, blocking):
+        assert blocking is False
+        held.append(True)
+        try:
+            yield
+        finally:
+            held.pop()
+
+    def status(**_):
+        assert held == [True]
+        return stopped()
+
+    def write(*args):
+        assert held == [True]
+        return original_write(*args)
+
+    monkeypatch.setattr(manual_settings, "locked", executor)
+    monkeypatch.setattr(safety_contract, "read_status", status)
+    monkeypatch.setattr(navigation_config, "_write", write)
+    navigation_config.configure({"revision": 0, "values": {"behavior": behavior()}})
+    assert not held
+
+
+def test_profile_busy_is_conflict_and_does_not_persist(policy_store, monkeypatch):
+    from flask import Flask
+
+    from services.api_core.navigation_api import config_handler
+
+    def busy(_):
+        raise BlockingIOError("manual_settings_busy")
+
+    monkeypatch.setattr(navigation_config, "configure", busy)
+    with Flask(__name__).test_request_context(method="POST", json={"revision": 0}):
+        response, code = config_handler()
+        assert code == 409 and response.get_json()["error"] == "navigation_profile_busy"
+    assert navigation_config.snapshot()["revision"] == 0
+
+
+@pytest.mark.parametrize("status", [{}, {"temporal_navigation_v1": False}, {"temporal_navigation_v1": 1}])
+def test_missing_pair_capability_blocks_preflight(status):
+    from apps.compute.client import ComputeError
+    from apps.compute.stream_prepare import _require_temporal
+
+    with pytest.raises(ComputeError, match="temporal_navigation_update_required"):
+        _require_temporal(status, 1)
+    _require_temporal(status, None)  # Existing legacy hosts are unchanged.
+
+
+def test_exact_pair_capability_is_accepted_without_actuation():
+    from apps.compute.stream_prepare import _require_temporal
+
+    _require_temporal({"temporal_navigation_v1": True}, 1)

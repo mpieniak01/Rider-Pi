@@ -254,6 +254,15 @@ class DecisionLease:
             "temporal_gap",
             "temporal_source_changed",
             "temporal_releasing",
+            "navigation_context_changed",
+            "navigation_duplicate_frame",
+            "navigation_time_discontinuity",
+            "navigation_frame_gap",
+            "navigation_invalid_evidence",
+            "navigation_tracking_lost",
+            "navigation_clear_confirmation",
+            "navigation_obstacle_confirmation",
+            "navigation_local_uncertainty",
         }:
             self._halt(self.reason)
             return False
