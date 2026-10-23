@@ -7,7 +7,17 @@ import { validPipeline } from './camera-pipeline.js';
 export class PerceptionModels {
   constructor(safety) {
     this.safety = safety; this.busy = false; this.epoch = 0;
-    document.getElementById('perception-refresh')?.addEventListener('click', () => this.poller.refresh());
+    this.drafts = {}; this.editBases = {};
+    for (const kind of ['provider', 'model']) {
+      const select = document.getElementById('perception-' + kind);
+      select?.addEventListener('focus', () => { this.editBases[kind] = this.revisions(); });
+      select?.addEventListener('blur', () => { delete this.editBases[kind]; });
+      select?.addEventListener('change', () => {
+        this.drafts[kind] = { ...(this.editBases[kind] || this.revisions()), value: select.value };
+        this.error = ''; this.render();
+      });
+    }
+    document.getElementById('perception-refresh')?.addEventListener('click', () => void this.refresh());
     document.getElementById('perception-provider-apply')?.addEventListener('click', () => void this.applyProvider());
     document.getElementById('perception-model-apply')?.addEventListener('click', () => void this.applyModel());
     this.poller = poll(() => this.load(), { interval: 3000, onError: error => {
@@ -39,7 +49,7 @@ export class PerceptionModels {
     const select = document.getElementById(id);
     if (!select) return;
     const key = JSON.stringify([rows, selected]);
-    if (select.dataset.choices !== key && document.activeElement !== select) {
+    if (this.resetChoices || select.dataset.choices !== key && document.activeElement !== select) {
       select.dataset.choices = key;
       select.replaceChildren(...rows.map(([value, label, supported]) => {
         const option = document.createElement('option');
@@ -59,57 +69,93 @@ export class PerceptionModels {
     this.choices('perception-provider', [
       ['venom', 'Venom', this.pipeline?.capabilities.analysis_locations.includes('venom')],
       ['local', tr('Lokalnie na Rider-Pi', 'Local on Rider-Pi'), this.pipeline?.capabilities.analysis_locations.includes('local')],
-    ], provider);
+    ], this.drafts.provider?.value || provider);
     const selected = local ? this.local?.selected_model_id
       : this.host?.selection?.model_id || this.policy?.perception?.model_id;
     this.choices('perception-model', rows.map(row => [
       row.id, row.label + ' · ' + row.installation + (row.reason ? ' · ' + row.reason : ''),
       row.selectable === true && row.installation === 'ready',
-    ]), selected);
+    ]), this.drafts.model?.value || selected);
     const runtime = this.host?.diagnostics?.runtime;
     const active = local ? this.local?.active_model_id
-      : runtime?.state === 'ready' || runtime?.state === 'loaded' ? runtime.active_model_id : null;
+      : runtime?.state === 'active' ? runtime.active_model_id : null;
     text('perception-selected', tr('Wybrany: ', 'Selected: ') + (selected || tr('profil historyczny', 'legacy profile')));
     text('perception-active', tr('Aktywny: ', 'Active: ') + (active || tr('brak potwierdzonego wyniku', 'no confirmed result')));
     text('perception-state', provider ? provider + ' · r' + this.pipeline.revision : tr('Stan nieznany', 'Unknown state'));
-    text('perception-error', this.error || '');
+    const providerStale = this.stale(this.currentDraft('provider'));
+    const modelStale = this.stale(this.currentDraft('model'));
+    text('perception-error', providerStale || modelStale ? this.conflictMessage() : this.error || '');
     const armed = this.safety?.state?.state === 'ARMED';
     const providerButton = document.getElementById('perception-provider-apply');
     const modelButton = document.getElementById('perception-model-apply');
-    if (providerButton) providerButton.disabled = this.busy || !this.pipeline || armed;
-    if (modelButton) modelButton.disabled = this.busy || !this.pipeline || armed || !this.policy
+    if (providerButton) providerButton.disabled = this.busy || !this.pipeline || armed || providerStale;
+    if (modelButton) modelButton.disabled = this.busy || !this.pipeline || armed || !this.policy || modelStale
       || (local ? !this.local : !this.host || this.host.switching === true) || !rows.some(row => row.selectable === true);
+  }
+  revisions() {
+    return { pipelineRevision: this.pipeline?.revision, policyRevision: this.policy?.revision,
+      provider: this.pipeline?.profile.analysis_location };
+  }
+  currentDraft(kind) {
+    return this.drafts[kind] || { ...(this.editBases[kind] || this.revisions()),
+      value: document.getElementById('perception-' + kind)?.value };
+  }
+  stale(draft) {
+    if (!this.pipeline) return false;
+    const current = this.revisions();
+    return ['pipelineRevision', 'policyRevision', 'provider'].some(key => draft[key] !== current[key]);
+  }
+  conflictMessage() {
+    return tr('Ustawienia zmieniono w drugim panelu. Odśwież modele i wybierz ponownie.',
+      'Settings changed in another panel. Refresh models and choose again.');
+  }
+  validatedDraft(kind) {
+    const draft = this.currentDraft(kind);
+    if (!this.stale(draft)) return draft;
+    this.error = this.conflictMessage(); showError(new Error(this.error)); this.render();
+    return null;
+  }
+  async refresh() {
+    this.drafts = {}; this.editBases = {}; this.error = '';
+    this.resetChoices = true; this.render(); this.resetChoices = false;
+    await this.poller.refresh();
+    this.resetChoices = true; this.render(); this.resetChoices = false;
   }
   async mutate(action) {
     if (this.busy || !this.pipeline) return;
     this.busy = true; this.epoch++; this.error = ''; this.render();
-    try { await action(); }
+    try { await action(); this.drafts = {}; this.editBases = {}; }
     catch (error) { this.error = error.message; showError(error); }
     finally { this.epoch++; this.busy = false; this.render(); void this.poller.refresh(); }
   }
-  async configureProfile(profile) {
+  async configureProfile(profile, revision) {
     await request('/api/resource/camera/pipeline', { method: 'POST', timeout: 20000, body: {
-      contract_version: 1, request_id: requestId('perception'), expected_revision: this.pipeline.revision,
+      contract_version: 1, request_id: requestId('perception'), expected_revision: revision,
       action: 'configure', profile,
     } });
   }
   async applyProvider() {
-    const value = document.getElementById('perception-provider')?.value;
+    const draft = this.validatedDraft('provider');
+    if (!draft) return;
+    const value = draft.value;
     if (!['local', 'venom'].includes(value)) return;
     if (!this.pipeline?.capabilities.analysis_locations.includes(value)) return;
     if (value === this.pipeline.profile.analysis_location) return;
-    await this.mutate(() => this.configureProfile({ ...this.pipeline.profile, analysis_location: value }));
+    const profile = { ...this.pipeline.profile, analysis_location: value };
+    await this.mutate(() => this.configureProfile(profile, draft.pipelineRevision));
   }
   async applyModel() {
-    const id = document.getElementById('perception-model')?.value;
+    const draft = this.validatedDraft('model');
+    if (!draft) return;
+    const id = draft.value;
     const row = this.modelRows()?.find(item => item.id === id);
     if (!row || row.selectable !== true || row.installation !== 'ready' || !this.policy) return;
     await this.mutate(async () => {
       if (this.pipeline.profile.analysis_location === 'local') {
-        await this.configureProfile({ ...this.pipeline.profile, local_engine: row.engine });
+        await this.configureProfile({ ...this.pipeline.profile, local_engine: row.engine }, draft.pipelineRevision);
       } else {
         await request('/api/navigation/model', { method: 'POST', timeout: 20000,
-          body: { revision: this.policy.revision, model_id: row.id } });
+          body: { revision: draft.policyRevision, model_id: row.id } });
       }
     });
   }

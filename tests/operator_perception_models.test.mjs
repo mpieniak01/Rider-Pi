@@ -8,7 +8,7 @@ const raw = (await readFile(new URL('../web/assets/operator/perception-models.js
 function fixture({ provider = 'venom', hostFails = false, armed = false } = {}) {
   const calls = [], nodes = {}, messages = [];
   const node = id => nodes[id] ??= { value: '', textContent: '', dataset: {}, disabled: false, children: [],
-    addEventListener() {}, replaceChildren(...children) { this.children = children; this.value = children.find(row => row.selected)?.value || children[0]?.value || ''; } };
+    listeners: {}, addEventListener(type, listener) { this.listeners[type] = listener; }, replaceChildren(...children) { this.children = children; this.value = children.find(row => row.selected)?.value || children[0]?.value || ''; } };
   let pipeline = { contract_id: 'rider.camera_pipeline', contract_version: 1, revision: 4, state: 'stopped',
     profile: { analysis_location: provider, local_engine: 'canny', remote_transport: 'snapshots' },
     capabilities: { analysis_locations: ['local', 'venom'] } };
@@ -17,9 +17,11 @@ function fixture({ provider = 'venom', hostFails = false, armed = false } = {}) 
     selected_model_id: 'local-canny', active_model_id: null };
   let host = { models: [{ id: 'segformer-b0-ade20k', label: 'SegFormer', installation: 'ready', selectable: true },
     { id: 'fast-scnn-floor', label: 'Fast SCNN', installation: 'unavailable', selectable: false, reason: 'unqualified' }],
-    selection: { model_id: 'segformer-b0-ade20k' }, diagnostics: { runtime: { state: 'ready', active_model_id: 'segformer-b0-ade20k' } } };
+    selection: { model_id: 'segformer-b0-ade20k' }, diagnostics: { runtime: { state: 'active', active_model_id: 'segformer-b0-ade20k' } } };
+  let policy = { revision: 9, perception: {} };
+  const document = { getElementById: node, createElement: () => ({}), activeElement: null };
   const context = vm.createContext({
-    document: { getElementById: node, createElement: () => ({}), activeElement: null },
+    document,
     window: { addEventListener() {} }, tr: (_pl, en) => en, text: (id, value) => { node(id).textContent = value; },
     showError: error => messages.push(error.message), requestId: () => 'fixture-request',
     validPipeline: value => !!value?.profile, poll: load => ({ refresh: load, stop() {} }),
@@ -27,14 +29,18 @@ function fixture({ provider = 'venom', hostFails = false, armed = false } = {}) 
       calls.push({ path, ...options });
       if (path === '/api/navigation/models' && hostFails) throw new Error('Host offline');
       const data = path === '/api/resource/camera/pipeline' ? pipeline : path === '/api/navigation/local-models' ? local
-        : path === '/api/navigation/config' ? { revision: 9, perception: {} } : host;
+        : path === '/api/navigation/config' ? policy : host;
       return { data: structuredClone(data) };
     },
   });
   const Class = vm.runInContext(raw + ';PerceptionModels', context);
   const panel = new Class({ state: { state: armed ? 'ARMED' : 'DISARMED' } });
   return { panel, calls, nodes, node, local, messages,
-    setHost: value => { host = value; }, setPipeline: value => { pipeline = value; } };
+    setHost: value => { host = value; }, setPipeline: value => { pipeline = value; },
+    setPolicy: value => { policy = value; }, getPipeline: () => structuredClone(pipeline),
+    focus: id => { document.activeElement = node(id); node(id).listeners.focus?.(); },
+    change: (id, value) => { node(id).value = value; node(id).listeners.change?.(); },
+  };
 }
 test('constructor does not install, start camera, arm or move', () => {
   assert.deepEqual(fixture().calls, []);
@@ -83,4 +89,59 @@ test('armed operator sees disabled change controls', async () => {
   const f = fixture({ armed: true }); await f.panel.load();
   assert.equal(f.node('perception-provider-apply').disabled, true);
   assert.equal(f.node('perception-model-apply').disabled, true);
+});
+
+
+test('host runtime uses canonical active state for the loaded model', async () => {
+  const f = fixture(); await f.panel.load();
+  assert.match(f.node('perception-active').textContent, /segformer-b0-ade20k/);
+  f.setHost({ models: [], diagnostics: { runtime: { state: 'loading', active_model_id: 'segformer-b0-ade20k' } } });
+  await f.panel.load();
+  assert.match(f.node('perception-active').textContent, /no confirmed result/);
+});
+
+test('draft host model keeps its original CAS across an external policy revision', async () => {
+  const f = fixture(); await f.panel.load();
+  f.focus('perception-model'); f.change('perception-model', 'segformer-b0-ade20k');
+  f.setPolicy({ revision: 10, perception: {} }); await f.panel.load();
+  assert.equal(f.node('perception-model-apply').disabled, true);
+  await f.panel.applyModel();
+  assert.equal(f.calls.some(call => call.method === 'POST'), false);
+  assert.match(f.node('perception-error').textContent, /Settings changed in another panel/);
+  await f.panel.refresh();
+  assert.equal(f.node('perception-model-apply').disabled, false);
+  f.change('perception-model', 'segformer-b0-ade20k'); await f.panel.applyModel();
+  assert.equal(f.calls.find(call => call.method === 'POST').body.revision, 10);
+});
+
+test('provider draft cannot overwrite a fresh pipeline read from the other panel', async () => {
+  const f = fixture(); await f.panel.load();
+  f.focus('perception-provider'); f.change('perception-provider', 'local');
+  f.setPipeline({ ...f.getPipeline(), revision: 5 }); await f.panel.load();
+  assert.equal(f.node('perception-provider').value, 'local');
+  assert.equal(f.node('perception-provider-apply').disabled, true);
+  await f.panel.applyProvider();
+  assert.equal(f.calls.some(call => call.method === 'POST'), false);
+  assert.match(f.node('perception-error').textContent, /Refresh models and choose again/);
+});
+
+test('focused unchanged menu still retains its opening revision until refresh', async () => {
+  const f = fixture(); await f.panel.load();
+  f.focus('perception-model');
+  f.setPolicy({ revision: 10, perception: {} }); await f.panel.load();
+  f.change('perception-model', 'segformer-b0-ade20k');
+  await f.panel.applyModel();
+  assert.equal(f.calls.some(call => call.method === 'POST'), false);
+});
+
+test('draft local engine never uses a new pipeline CAS obtained after editing began', async () => {
+  const f = fixture({ provider: 'local' }); await f.panel.load();
+  f.focus('perception-model'); f.change('perception-model', 'local-ssd');
+  f.setPipeline({ ...f.getPipeline(), revision: 5 }); await f.panel.load();
+  await f.panel.applyModel();
+  assert.equal(f.calls.some(call => call.method === 'POST'), false);
+  await f.panel.refresh();
+  assert.equal(f.node('perception-model').value, 'local-canny');
+  f.change('perception-model', 'local-ssd'); await f.panel.applyModel();
+  assert.equal(f.calls.find(call => call.method === 'POST').body.expected_revision, 5);
 });
