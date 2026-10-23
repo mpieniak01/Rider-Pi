@@ -164,7 +164,7 @@ def test_late_journey_go_waits_in_zero_only_inside_original_feedback_window():
     assert lease.latched and lease.reason == "decision_timeout"
 
 
-def test_expired_capture_retries_only_a_new_source_inside_existing_journey_feedback(isolated):
+def test_expired_capture_retries_only_a_new_source_inside_existing_journey_feedback(isolated, monkeypatch):
     from apps.compute.http_budget import CaptureBudgetExpired
     from apps.compute.journey import JourneyProgress
 
@@ -194,6 +194,13 @@ def test_expired_capture_retries_only_a_new_source_inside_existing_journey_feedb
     feedback = runner.lease.feedback_deadline
     before = len(isolated[-1])
     now[0] = 10.07
+    authority = runner._authority
+
+    def delayed_authority():
+        now[0] += 0.01
+        return authority()
+
+    monkeypatch.setattr(runner, "_authority", delayed_authority)
     meta = {
         **{k: decision[k] for k in ("protocol_version", "run_id", "config_revision")},
         "frame_id": "new",

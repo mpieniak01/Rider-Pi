@@ -144,8 +144,6 @@ class NavigationCycle:
                 "valid_for_ms": 0,
                 **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
             }
-            self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
-            self.response_age_ms = round((self.clock() - captured) * 1000, 2)
             self._status(self.last_result)
             if not bounded_retry:
                 self.closed.wait(0.2)
