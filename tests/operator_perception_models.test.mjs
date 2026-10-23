@@ -3,7 +3,8 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 
-const raw = (await readFile(new URL('../web/assets/operator/perception-models.js', import.meta.url), 'utf8'))
+const sourceUrl = new URL('../web/assets/operator/perception-models.js', import.meta.url);
+const raw = (await readFile(sourceUrl, 'utf8'))
   .replace(/^import .*;$/gm, line => line.replace(/[^\n]/g, ' ')).replace('export class', '       class');
 function fixture({ provider = 'venom', hostFails = false, armed = false } = {}) {
   const calls = [], nodes = {}, messages = [];
@@ -33,7 +34,7 @@ function fixture({ provider = 'venom', hostFails = false, armed = false } = {}) 
       return { data: structuredClone(data) };
     },
   });
-  const Class = vm.runInContext(raw + ';PerceptionModels', context);
+  const Class = vm.runInContext(raw + ';PerceptionModels', context, { filename: sourceUrl.href });
   const panel = new Class({ state: { state: armed ? 'ARMED' : 'DISARMED' } });
   return { panel, calls, nodes, node, local, messages,
     setHost: value => { host = value; }, setPipeline: value => { pipeline = value; },
