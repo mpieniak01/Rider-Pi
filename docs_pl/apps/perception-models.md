@@ -93,3 +93,16 @@ Automatyczne testy używają plików tymczasowych, atrapy transportu i silników
 w pamięci. Odbiór operatorski sprawdza zgodność obu paneli, kamerę OFF/ON,
 blokadę zmiany przy sterowaniu oraz brak starego wyniku po przełączeniu.
 Ruch wymaga oddzielnej zgody operatora na konkretną próbę.
+
+## Tożsamość obrazu lokalnego
+
+W zarządzanym torze kamery `/camera/proc` czyta wyłącznie wynik z RAM;
+nie wraca do starych plików JPEG. Producent przetworzonego obrazu dołącza
+`local_engine`, `model_id=local-<engine>` i `analysis_location=local`
+do tych samych metadanych co klatka (sesja, epoch, rewizja i czas przechwycenia).
+API odrzuca wynik starszej konfiguracji lub innego silnika.
+`X-Rider-Source-Json` zachowuje te pola, a nagłówki
+`X-Rider-Local-Engine` i `X-Rider-Local-Model-Id` są ich projekcją.
+RAW nie otrzymuje tożsamości modelu. Po zamknięciu producenta bufor jest pusty.
+Panel nadal odrzuca odpowiedzi z poprzedniej sesji/epoch, także po restarcie
+tego samego profilu; czas odczytu HTTP nie zastępuje czasu przechwycenia.

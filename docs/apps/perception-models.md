@@ -89,3 +89,15 @@ Automated tests use temporary files, fake transport and memory-only motors.
 Operator acceptance checks both panels, camera OFF/ON, selection refusal during
 control, and removal of old results on a switch. Motion needs separate operator
 consent for a specific trial.
+
+## Local image identity
+
+Managed `/camera/proc` reads only processed RAM frames, without falling back
+to older JPEG files. The actual producer attaches `local_engine`,
+`model_id=local-<engine>`, and `analysis_location=local` to the same capture
+metadata (session, epoch, revision, capture time). The API rejects a prior
+configuration or another engine. `X-Rider-Source-Json` preserves those fields;
+`X-Rider-Local-Engine` and `X-Rider-Local-Model-Id` project them as headers.
+RAW carries no model identity. Closing the producer empties the buffer.
+The panel also rejects replies from an earlier session/epoch, including
+restarts of the same profile. HTTP read time never replaces capture time.
