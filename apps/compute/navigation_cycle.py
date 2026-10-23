@@ -83,6 +83,10 @@ class NavigationCycle:
             **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
         }
         meta["perception"] = self.policy["perception"]
+        from services.navigation_behavior import active
+
+        if active(self.policy):
+            meta["behavior"] = self.policy["behavior"]
         if self.policy["mode"] == "drive" and self.lease.journey is not None:
             meta["journey"] = dict(self.lease.journey.context)
         if self.policy.get("avoidance", {}).get("enabled"):
@@ -200,6 +204,10 @@ class NavigationCycle:
             self.closed.wait(0.01)
 
     def _check_model_reply(self, decision, meta):
+        from services.navigation_behavior import reply_valid
+
+        if not isinstance(decision, dict) or not reply_valid(self.policy, decision):
+            raise ComputeError("navigation_behavior_identity_mismatch")
         perception = self.policy.get("perception", {})
         if not perception.get("model_id"):
             return  # Legacy peers keep the original v1/v2/v3 wire contract.

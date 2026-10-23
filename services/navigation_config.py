@@ -9,11 +9,13 @@ import re
 from pathlib import Path
 
 from services.compute_config import _lock, _require_idle_goals, _selection_lock, _write
+from services.navigation_profiles import DEFAULT_BEHAVIOR, validate_behavior
 from services.perception_selection import IDENTITY_FIELDS, drive_supported, identity, validate_identity
 
 DEFAULT = {
     "protocol_version": 1,
     "revision": 0,
+    "behavior": dict(DEFAULT_BEHAVIOR),
     "mode": "observe",
     "speed": 0.1,
     "decision_budget_ms": 300,
@@ -163,6 +165,8 @@ def _validate_avoidance_authority(data, perception, avoidance, geometry):
 
 
 def validate(data):
+    if isinstance(data, dict) and "behavior" not in data:
+        data = {**data, "behavior": dict(DEFAULT_BEHAVIOR)}
     if not isinstance(data, dict) or set(data) != set(DEFAULT):
         raise ValueError("navigation_configuration_invalid")
     if (
@@ -178,6 +182,7 @@ def validate(data):
         or type(data["verified"]) is not bool
     ):
         raise ValueError("navigation_configuration_invalid")
+    validate_behavior(data["behavior"])
     _validate_command_policy(data)
     if not isinstance(data["calibration_id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{0,64}", data["calibration_id"]):
         raise ValueError("navigation_calibration_invalid")
@@ -269,6 +274,14 @@ def configure_locked(body):
         _validated_perception(proposed_perception)
         if identity(proposed_perception) != identity(old["perception"]):
             raise ValueError("navigation_model_selection_required")
+        behavior = validate_behavior(proposed.get("behavior"))
+        profile_changed = behavior != old.get("behavior", DEFAULT_BEHAVIOR)
+        if profile_changed:
+            from services.navigation_behavior import require_stopped
+
+            require_stopped()
+            proposed.update(mode="observe", verified=False, calibration_id="", model_sha256="")
+            proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
         engine_changed = proposed_perception["engine"] != old["perception"]["engine"]
         if engine_changed and proposed_perception.get("model_id"):
             raise ValueError("navigation_model_selection_required")
@@ -282,6 +295,7 @@ def configure_locked(body):
                 "max_motion_ms",
                 "perception",
                 "avoidance",
+                "behavior",
             )
         )
         if (

@@ -128,7 +128,7 @@ class DecisionLease:
 
     def _accept_go(self, decision, now, remaining, valid, captured):
         if (
-            decision.get("state") != "clear"
+            (decision.get("state") != "clear" and decision.get("action") != "slow")
             or type(decision.get("clear_count")) is not int
             or decision["clear_count"] < 3
             or self.config["mode"] != "drive"
@@ -149,7 +149,8 @@ class DecisionLease:
         self.moving = True
         self.paused_for_obstacle = False
         try:
-            self.drive(self.config["speed"], duration)
+            factor = decision["temporal"]["speed_factor"] if decision["action"] == "slow" else 1.0
+            self.drive(self.config["speed"] * factor, duration)
         except Exception:
             self._halt("motion_submission_failed")
             raise
@@ -158,8 +159,12 @@ class DecisionLease:
         return True
 
     def _admit_decision(self, decision, frame_id, sequence, captured_monotonic, now):
+        from services.navigation_behavior import active, reply_valid
         from services.perception_selection import drive_supported
 
+        if not isinstance(decision, dict) or not reply_valid(self.config, decision):
+            self._halt("navigation_behavior_identity_mismatch")
+            return None
         perception = self.config.get("perception", {})
         if not drive_supported(perception):
             self._halt("navigation_model_observe_only")
@@ -203,6 +208,8 @@ class DecisionLease:
             self._halt("decision_invalid_or_expired")
             return None
         actions = {"go", "stop"}
+        if active(self.config):
+            actions.add("slow")
         if identity["protocol_version"] == 2:
             actions |= {"turn_left", "turn_right"}
         if identity["protocol_version"] == 3:
@@ -240,6 +247,13 @@ class DecisionLease:
             "ground_reference_uncertain",
             "geometry_calibration_missing",
             "ground_projection_incomplete",
+            "temporal_evidence_unavailable",
+            "temporal_tracking_lost",
+            "temporal_history_pending",
+            "temporal_uncertainty",
+            "temporal_gap",
+            "temporal_source_changed",
+            "temporal_releasing",
         }:
             self._halt(self.reason)
             return False

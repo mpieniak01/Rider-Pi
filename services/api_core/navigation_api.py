@@ -8,13 +8,17 @@ from services import navigation_config
 def config_handler():
     try:
         if request.method == "GET":
-            return jsonify(navigation_config.snapshot()), 200
+            from services.navigation_profiles import catalog
+
+            config = navigation_config.snapshot()
+            return jsonify({**config, "behavior_catalog": catalog(config.get("behavior"))}), 200
         data = navigation_config.configure(request.get_json(silent=True))
         return jsonify({"ok": True, "persisted": True, "config": data}), 200
     except ValueError as exc:
         code = str(exc)
         return jsonify({"error": code}), 409 if code in {
             "navigation_configuration_conflict",
+            "navigation_profile_requires_stopped",
             "compute_stop_goals_first",
             "navigation_stop_goals_first",
             "navigation_model_selection_required",
