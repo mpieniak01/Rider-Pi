@@ -555,3 +555,7 @@ po awarii nie odtwarza ruchu po nowszym STOP.
 `apps.compute.navigation_cycle.NavigationCycle` wydziela pojedynczy cykl
 klatka → żądanie providera → kwalifikacja decyzji → status. Jest częścią
 istniejącej pętli, bez nowego wątku, usługi ani właściciela aktuatorów.
+
+## Dostawca i model percepcji
+
+[Dostawca i model percepcji](perception-models.md).

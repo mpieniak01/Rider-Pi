@@ -25,6 +25,53 @@
 <h2 data-pl="Zadania mapowania i nawigacji" data-en="Mapping and navigation tasks">Zadania mapowania i nawigacji</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div>
 <section class="c-card"><h2 data-pl="Wizja i ruch przez Venom" data-en="Vision and movement via Venom">Wizja i ruch przez Venom</h2>
 <p data-pl="Obserwacja nie porusza robotem. Jazda wymaga odbioru strefy zatrzymania, osobnego ARM navigation i świeżych decyzji. Brak odpowiedzi zatrzymuje Pi." data-en="Observation does not move the robot. Driving requires an accepted stopping zone, separate navigation ARM and fresh decisions. Missing responses stop Pi.">Obserwacja nie porusza robotem. Jazda wymaga odbioru strefy zatrzymania, osobnego ARM navigation i świeżych decyzji. Brak odpowiedzi zatrzymuje Pi.</p>
+<section aria-labelledby="perception-title">
+<h3 id="perception-title" data-pl="Dostawca i model analizy" data-en="Analysis provider and model">Dostawca i model analizy</h3>
+<p data-pl="Wagi modeli Venom są zarządzane na hoście Venom. Lokalny model Pi pochodzi z istniejącego toru kamery. Przed zmianą rozbrój robota i zatrzymaj pętle analizy oraz zadania ruchowe. Zmiana nie uruchamia kamery ani robota i kasuje odbiór jazdy." data-en="Venom model weights are managed on Venom. Local Pi analysis uses the existing camera pipeline. Disarm the robot and stop analysis loops and moving tasks before changing. Selection never starts camera or motion and clears driving acceptance.">Wagi modeli Venom są zarządzane na hoście Venom. Lokalny model Pi pochodzi z istniejącego toru kamery. Przed zmianą rozbrój robota i zatrzymaj pętle analizy oraz zadania ruchowe. Zmiana nie uruchamia kamery ani robota i kasuje odbiór jazdy.</p>
+<div class="operator-row">
+<label><span data-pl="Dostawca" data-en="Provider">Dostawca</span><select id="perception-provider"></select></label>
+<button id="perception-provider-apply" type="button" class="c-btn c-btn-sm" data-pl="Zastosuj dostawcę" data-en="Apply provider">Zastosuj dostawcę</button>
+<label><span data-pl="Model dostawcy" data-en="Provider model">Model dostawcy</span><select id="perception-model"></select></label>
+<button id="perception-model-apply" type="button" class="c-btn" data-pl="Zastosuj model — obserwacja" data-en="Apply model — observation">Zastosuj model — obserwacja</button>
+<button id="perception-refresh" type="button" class="c-btn c-btn-sm" data-pl="Odśwież modele" data-en="Refresh models">Odśwież modele</button>
+</div><output id="perception-state" aria-live="polite" aria-atomic="true">unknown</output><p id="perception-selected"></p><p id="perception-active"></p><p id="perception-error" role="alert"></p>
+<p data-pl="Canny jest algorytmem krawędzi, a SSD/TFLite detektorami obiektów. Nie są zamiennikami segmentacji podłogi ani potwierdzeniem gotowości do jazdy." data-en="Canny is an edge algorithm; SSD/TFLite are object detectors. They do not provide floor segmentation or prove driving readiness.">Canny jest algorytmem krawędzi, a SSD/TFLite detektorami obiektów. Nie są zamiennikami segmentacji podłogi ani potwierdzeniem gotowości do jazdy.</p>
+</section>
+<section aria-labelledby="navigation-profile-title" class="c-card">
+<h3 id="navigation-profile-title">Poziom ostrożności jazdy</h3>
+<p id="navigation-profile-hint"></p>
+<div class="operator-row">
+<label><span id="navigation-profile-label">Poziom ostrożności</span><select id="navigation-profile" disabled><option value="legacy">Legacy</option></select></label>
+<button id="navigation-profile-apply" type="button" class="c-btn" disabled>Zastosuj profil — obserwacja</button>
+<button id="navigation-profile-refresh" type="button" class="c-btn c-btn-sm">Odśwież profil</button>
+</div>
+<output id="navigation-profile-current" aria-live="polite" aria-atomic="true"></output><p id="navigation-profile-draft"></p>
+<p id="navigation-profile-description"></p><p id="navigation-profile-provider-hint"></p><p id="navigation-profile-experimental"></p>
+<output id="navigation-profile-message" aria-live="polite" aria-atomic="true"></output>
+<details><summary id="navigation-profile-parameters-label">Parametry profilu — tylko odczyt</summary><p id="navigation-profile-hash" class="operator-json"></p><pre id="navigation-profile-parameters" class="operator-json"></pre></details>
+<h3 id="navigation-temporal-title">Ocena obrazu w czasie</h3>
+<pre id="navigation-temporal-state" class="operator-json"></pre>
+</section>
+<section aria-labelledby="model-tuning-title" class="c-card">
+<h3 id="model-tuning-title">Strojenie wybranego modelu</h3>
+<p id="model-tuning-hint"></p><output id="model-tuning-current" aria-live="polite" aria-atomic="true"></output>
+<fieldset id="model-tuning-semantic" class="model-tuning-fields" hidden><legend id="model-tuning-semantic-label">Segmentacja podłoża</legend>
+<label><span id="model-tuning-surface-label">Klasy przejezdnego podłoża</span><select id="model-tuning-surface" disabled><option value="floor_only">Podłoga (floor = 3)</option><option value="floor_rug">Podłoga i dywan (floor = 3, rug = 28)</option></select></label>
+<p id="model-tuning-rug-hint"></p>
+<div class="model-tuning-field"><label><span id="model-tuning-label-pixel_confidence">pixel_confidence</span><select id="model-tuning-mode-pixel_confidence" disabled><option value="inherit">Dziedzicz z profilu</option><option value="custom">Własna wartość</option></select></label><input aria-label="pixel_confidence" id="model-tuning-pixel_confidence" type="number" min="0.05" max="1" step=".01" disabled></div>
+<div class="model-tuning-field"><label><span id="model-tuning-label-min_floor_fraction">min_floor_fraction</span><select id="model-tuning-mode-min_floor_fraction" disabled><option value="inherit">Dziedzicz z profilu</option><option value="custom">Własna wartość</option></select></label><input aria-label="min_floor_fraction" id="model-tuning-min_floor_fraction" type="number" min="0.5" max="1" step=".01" disabled></div>
+<div class="model-tuning-field"><label><span id="model-tuning-label-max_uncertain_fraction">max_uncertain_fraction</span><select id="model-tuning-mode-max_uncertain_fraction" disabled><option value="inherit">Dziedzicz z profilu</option><option value="custom">Własna wartość</option></select></label><input aria-label="max_uncertain_fraction" id="model-tuning-max_uncertain_fraction" type="number" min="0" max="0.5" step=".01" disabled></div>
+<div class="model-tuning-field"><label><span id="model-tuning-label-min_region_fraction">min_region_fraction</span><select id="model-tuning-mode-min_region_fraction" disabled><option value="inherit">Dziedzicz z profilu</option><option value="custom">Własna wartość</option></select></label><input aria-label="min_region_fraction" id="model-tuning-min_region_fraction" type="number" min="0" max="0.02" step=".0001" disabled></div>
+</fieldset>
+<fieldset id="model-tuning-depth" class="model-tuning-fields" hidden><legend id="model-tuning-depth-label">Geometria Depth Anything V2</legend>
+<label><span id="model-tuning-label-residual_limit">residual_limit</span><input id="model-tuning-residual_limit" type="number" min="0.01" max="0.15" step=".005" disabled></label>
+<label><span id="model-tuning-label-outlier_limit">outlier_limit</span><input id="model-tuning-outlier_limit" type="number" min="0" max="2" step=".1" disabled></label>
+<label><span id="model-tuning-label-slope_min">slope_min</span><input id="model-tuning-slope_min" type="number" min="1" max="4" step=".1" disabled></label>
+</fieldset>
+<p id="model-tuning-draft"></p><output id="model-tuning-message" aria-live="polite" aria-atomic="true"></output>
+<div class="operator-row"><button id="model-tuning-apply" type="button" class="c-btn" disabled>Zapisz model — obserwacja</button><button id="model-tuning-refresh" type="button" class="c-btn c-btn-sm">Odśwież</button></div>
+<details><summary id="model-tuning-effective-label">Zapisane parametry efektywne z serwera</summary><pre id="model-tuning-effective" class="operator-json"></pre></details>
+</section>
 <button id="remote-load" type="button" class="c-btn" data-pl="Odczytaj ustawienia Pi" data-en="Read Pi settings">Odczytaj ustawienia Pi</button>
 <div class="operator-grid">
 <label>Tryb / Mode <select id="remote-mode"><option value="observe">Obserwacja / Observe</option><option value="drive">Jazda / Drive</option></select></label>
@@ -47,7 +94,7 @@
 
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=motion-curves-14"></script>
+<script type="module" src="/web/assets/operator/app.js?v=temporal-model-tuning-2"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

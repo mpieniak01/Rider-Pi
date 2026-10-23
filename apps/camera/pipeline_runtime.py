@@ -82,7 +82,16 @@ class CameraProducer:
     def deliver(self, data, metadata, *, processed=None):
         self.frames.publish(data, metadata)
         if processed is not None:
-            self.frames.publish(processed, metadata, view="proc")
+            source = dict(metadata)
+            if self.processor is not None:
+                # Identity belongs to the processor that produced these bytes,
+                # never to a requested profile read later by the HTTP route.
+                source.update(
+                    analysis_location="local",
+                    local_engine=self.processor.engine,
+                    model_id="local-" + self.processor.engine,
+                )
+            self.frames.publish(processed, source, view="proc")
         if self.publisher is not None:
             # Legacy consumers receive the source timestamp, never publication time.
             age_s = (self.clock() - metadata["captured_monotonic_ns"]) / 1_000_000_000

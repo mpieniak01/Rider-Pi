@@ -1,4 +1,7 @@
+import { ModelTuning } from "./model-tuning.js";
+import { NavigationProfiles } from "./navigation-profiles.js";
 import { CameraPipelineControls, PipelinePreview } from './camera-pipeline.js';
+import { PerceptionModels } from './perception-models.js';
 import { RemoteNavigation } from "./remote-navigation.js";
 import { CameraPower } from './camera-power.js?v=overview-vision-2';
 import { Posture } from './posture.js?v=posture-1';
@@ -51,7 +54,7 @@ if (page === 'control') tasks = new Tasks(safety);
 if (page === 'calibration') calibration = new Calibration(safety);
 if (page === 'devices') mounted.push(new Devices(safety));
 if (page === 'system') system = new System(safety);
-if (page === 'navigation') { mounted.push(new RemoteNavigation(safety)); tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
+if (page === 'navigation') { mounted.push(new RemoteNavigation(safety), new PerceptionModels(safety), new NavigationProfiles(safety), new ModelTuning(safety)); tasks = new Tasks(safety, 'task-list', task => task.can_move === false && (task.motion_owner === 'navigation' || task.scenario === 'S8')); navigation = new Navigation(safety); }
 if (page === 'chat') { tasks = new Tasks(safety, 'task-list', task => ['voice', 'provider'].includes(task.option_kind) && task.can_move === false); chat = new Chat(tasks); void chat.loadProviders(); }
 if (page === 'view') {
   overview = new Overview(safety);

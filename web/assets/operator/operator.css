@@ -97,3 +97,10 @@
 
 .camera-pipeline-controls { margin: 0 0 1rem; padding: .5rem 0; border-bottom: 1px solid var(--border, #284053); }
 .camera-pipeline-controls select { max-width: 100%; }
+
+/* Model-specific controls share the native operator form standard. */
+.model-tuning-fields { display:grid;gap:12px;min-width:0;margin:12px 0;padding:12px; }
+.model-tuning-fields[hidden] { display:none; }
+.model-tuning-fields label { display:grid;gap:6px;min-width:0; }
+.model-tuning-field { display:grid;grid-template-columns:minmax(0,1fr) minmax(80px,.45fr);gap:10px;align-items:end; }
+.model-tuning-field input,.model-tuning-field select { min-width:0;width:100%; }

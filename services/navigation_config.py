@@ -6,13 +6,17 @@ import json
 import math
 import os
 import re
+from contextlib import nullcontext
 from pathlib import Path
 
 from services.compute_config import _lock, _require_idle_goals, _selection_lock, _write
+from services.navigation_profiles import DEFAULT_BEHAVIOR, validate_behavior
+from services.perception_selection import IDENTITY_FIELDS, drive_supported, identity, validate_identity
 
 DEFAULT = {
     "protocol_version": 1,
     "revision": 0,
+    "behavior": dict(DEFAULT_BEHAVIOR),
     "mode": "observe",
     "speed": 0.1,
     "decision_budget_ms": 300,
@@ -76,8 +80,17 @@ def _validate_command_policy(data):
 
 
 def _validated_perception(perception):
-    if not isinstance(perception, dict) or set(perception) != set(DEFAULT["perception"]):
+    required = set(DEFAULT["perception"])
+    if (
+        not isinstance(perception, dict)
+        or not required <= set(perception)
+        or set(perception) - required - IDENTITY_FIELDS - {"semantic_models"}
+    ):
         raise ValueError("navigation_perception_invalid")
+    validate_identity(perception)
+    from services.perception_tuning import validate_semantic_models
+
+    validate_semantic_models(perception.get("semantic_models", {}))
     if not isinstance(perception["engine"], str) or perception["engine"] not in {"segformer", "depth_plane"}:
         raise ValueError("navigation_perception_invalid")
     for key, low, high in (("residual_limit", 0.01, 0.15), ("outlier_limit", 0.0, 0.02), ("slope_min", 1.0, 4.0)):
@@ -156,6 +169,8 @@ def _validate_avoidance_authority(data, perception, avoidance, geometry):
 
 
 def validate(data):
+    if isinstance(data, dict) and "behavior" not in data:
+        data = {**data, "behavior": dict(DEFAULT_BEHAVIOR)}
     if not isinstance(data, dict) or set(data) != set(DEFAULT):
         raise ValueError("navigation_configuration_invalid")
     if (
@@ -171,6 +186,7 @@ def validate(data):
         or type(data["verified"]) is not bool
     ):
         raise ValueError("navigation_configuration_invalid")
+    validate_behavior(data["behavior"])
     _validate_command_policy(data)
     if not isinstance(data["calibration_id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{0,64}", data["calibration_id"]):
         raise ValueError("navigation_calibration_invalid")
@@ -179,6 +195,11 @@ def validate(data):
     if data["mode"] == "drive" and (not data["verified"] or not data["calibration_id"] or not data["model_sha256"]):
         raise ValueError("navigation_validation_required")
     perception = _validated_perception(data["perception"])
+    if data["mode"] == "drive":
+        if not drive_supported(perception):
+            raise ValueError("navigation_model_observe_only")
+        if perception.get("model_id") and data["model_sha256"] != perception.get("artifact_sha256"):
+            raise ValueError("navigation_model_approval_mismatch")
     avoidance = _validated_avoidance(data["avoidance"])
     geometry = _validated_geometry(avoidance["geometry"])
     _validate_avoidance_authority(data, perception, avoidance, geometry)
@@ -242,7 +263,14 @@ def configure_locked(body):
         raise ValueError("navigation_configuration_invalid")
     if set(body["values"]) - (set(DEFAULT) - {"protocol_version", "revision"}):
         raise ValueError("navigation_configuration_invalid")
-    with _lock(path()):
+    from apps.motion import manual_settings
+
+    # Match model selection lock order: selection -> executor -> configuration.
+    # STOP bypasses this mutex; non-STOP commands cannot race profile persistence.
+    executor = (
+        manual_settings.locked(blocking=False) if set(body["values"]) & {"behavior", "perception"} else nullcontext()
+    )
+    with executor, _lock(path()):
         old = snapshot()
         if body["revision"] != old["revision"]:
             raise ValueError("navigation_configuration_conflict")
@@ -252,6 +280,30 @@ def configure_locked(body):
             _require_idle_goals()
         _require_navigation_goals_stopped()
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
+        # Model identities are committed by the host-coordinated endpoint only.
+        proposed_perception = proposed.get("perception")
+        _validated_perception(proposed_perception)
+        if identity(proposed_perception) != identity(old["perception"]):
+            raise ValueError("navigation_model_selection_required")
+        behavior = validate_behavior(proposed.get("behavior"))
+        profile_changed = behavior != old.get("behavior", DEFAULT_BEHAVIOR)
+        perception_changed = proposed_perception != old["perception"]
+        if profile_changed and behavior["profile_id"] != "legacy":
+            from services.camera_pipeline_store import snapshot as camera_configuration
+
+            if camera_configuration()["profile"]["analysis_location"] != "venom":
+                raise ValueError("navigation_profile_local_executor")
+        if profile_changed or perception_changed:
+            from services.navigation_behavior import require_stopped
+
+            require_stopped()
+        tuning_changed = proposed_perception.get("semantic_models", {}) != old["perception"].get("semantic_models", {})
+        if profile_changed or tuning_changed:
+            proposed.update(mode="observe", verified=False, calibration_id="", model_sha256="")
+            proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
+        engine_changed = proposed_perception["engine"] != old["perception"]["engine"]
+        if engine_changed and proposed_perception.get("model_id"):
+            raise ValueError("navigation_model_selection_required")
         changed = any(
             proposed[k] != old[k]
             for k in (
@@ -262,6 +314,7 @@ def configure_locked(body):
                 "max_motion_ms",
                 "perception",
                 "avoidance",
+                "behavior",
             )
         )
         if (
@@ -270,6 +323,14 @@ def configure_locked(body):
             and (proposed["calibration_id"] == old["calibration_id"] or body["values"].get("verified") is not True)
         ):
             proposed.update(verified=False, mode="observe")
-        data = validate(proposed)
-        _write(path(), data)
+        if engine_changed:
+            from services.perception_selection import _reset_approval, require_idle
+
+            require_idle()
+            _reset_approval(proposed)
+            data = validate(proposed)
+            _write(path(), data)
+        else:
+            data = validate(proposed)
+            _write(path(), data)
     return data

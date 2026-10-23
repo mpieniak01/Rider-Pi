@@ -81,7 +81,25 @@ def pipeline():
 
 def _read(**kwargs):
     try:
-        return read_frame(**kwargs)
+        item = read_frame(**kwargs)
+        if item is None:
+            return None
+        from services import camera_pipeline_store as store
+
+        if store.enabled():
+            config, source = store.snapshot(), item[1]
+            if type(source.get("pipeline_revision")) is not int or source["pipeline_revision"] != config["revision"]:
+                return None
+            if "local_engine" in source or "model_id" in source:
+                engine = source.get("local_engine")
+                if (
+                    config["profile"]["analysis_location"] != "local"
+                    or engine != config["profile"]["local_engine"]
+                    or source.get("model_id") != "local-" + str(engine)
+                    or source.get("analysis_location") != "local"
+                ):
+                    return None
+        return item
     except (OSError, ValueError, KeyError, TypeError):
         return None
 

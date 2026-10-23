@@ -82,7 +82,13 @@ class NavigationCycle:
             "deadline_ms": self.policy["decision_budget_ms"],
             **{k: self.policy[k] for k in ("mode", "corridor", "verified", "calibration_id", "model_sha256")},
         }
-        meta["perception"] = self.policy["perception"]
+        meta["perception"] = dict(self.policy["perception"])
+        if not meta["perception"].get("semantic_models"):
+            meta["perception"].pop("semantic_models", None)
+        from services.navigation_behavior import active
+
+        if active(self.policy):
+            meta["behavior"] = self.policy["behavior"]
         if self.policy["mode"] == "drive" and self.lease.journey is not None:
             meta["journey"] = dict(self.lease.journey.context)
         if self.policy.get("avoidance", {}).get("enabled"):
@@ -132,6 +138,7 @@ class NavigationCycle:
             return False, None
         self.request_roundtrip_ms = round((self.clock() - request_started) * 1000, 2)
         self.response_age_ms = round((self.clock() - captured) * 1000, 2)
+        self._check_model_reply(decision, meta)
         self.last_result = decision
         return True, decision
 
@@ -170,7 +177,8 @@ class NavigationCycle:
             # Keep the image verdict, but report the actual ZERO sent
             # to Pi while waiting for a usable fresh motion permit.
             decision = {**decision, "action": "stop", "motion_reason": self.lease.reason}
-            self.last_result = decision
+            self._check_model_reply(decision, meta)
+        self.last_result = decision
         return True, decision
 
     def _qualify_decision(self, decision, frame_id, captured):
@@ -196,3 +204,23 @@ class NavigationCycle:
                 self.closed.set()
         if self.policy["mode"] == "observe":
             self.closed.wait(0.01)
+
+    def _check_model_reply(self, decision, meta):
+        from services.navigation_behavior import reply_valid
+
+        if not isinstance(decision, dict) or not reply_valid(self.policy, decision):
+            raise ComputeError("navigation_behavior_identity_mismatch")
+        perception = self.policy.get("perception", {})
+        if not perception.get("model_id"):
+            return  # Legacy peers keep the original v1/v2/v3 wire contract.
+        expected = {key: meta[key] for key in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")}
+        expected.update(
+            model_id=perception["model_id"],
+            artifact_sha256=perception["artifact_sha256"],
+        )
+        if (
+            not isinstance(decision, dict)
+            or any(decision.get(key) != value for key, value in expected.items())
+            or any(type(decision.get(key)) is not int for key in ("protocol_version", "sequence", "config_revision"))
+        ):
+            raise ComputeError("navigation_model_identity_mismatch")

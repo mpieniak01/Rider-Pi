@@ -190,6 +190,10 @@ def _ram_response(stream):
             result.headers["X-Rider-Frame-Age-Source"] = "capture"
             result.headers["X-Rider-Observed-At"] = str(time.time() - age / 1000)
         result.headers["X-Rider-Provenance"] = "capture"
+        if source.get("local_engine"):
+            result.headers["X-Rider-Local-Engine"] = source["local_engine"]
+        if source.get("model_id"):
+            result.headers["X-Rider-Local-Model-Id"] = source["model_id"]
     return result
 
 
