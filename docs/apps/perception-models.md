@@ -101,3 +101,6 @@ configuration or another engine. `X-Rider-Source-Json` preserves those fields;
 RAW carries no model identity. Closing the producer empties the buffer.
 The panel also rejects replies from an earlier session/epoch, including
 restarts of the same profile. HTTP read time never replaces capture time.
+
+
+Related: [navigation profiles and SLOW](navigation-profiles.md).

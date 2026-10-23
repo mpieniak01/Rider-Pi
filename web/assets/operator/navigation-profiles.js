@@ -122,13 +122,15 @@ export class NavigationProfiles {
       text('navigation-temporal-state', t('temporal.none')); return;
     }
     const profile = decision.behavior, current = this.status.running === true && this.status.stale !== true;
+    const reasonKey = "vision.reason." + (temporal.reason || "");
+    const reason = t(reasonKey);
     const rows = [
       current ? '' : t('temporal.historical'),
       t('temporal.raw') + ': ' + (decision.raw_state || '—'),
       t('temporal.stabilized') + ': ' + (temporal.state || '—'),
       t('temporal.risk') + ': ' + (temporal.risk || '—') + ' / ' + temporal.action,
       t('behavior.title') + ': ' + (profile ? t('behavior.profile.' + profile.profile_id) + ' · r' + profile.profile_revision : '—'),
-      t('temporal.reason') + ': ' + (temporal.reason || t('temporal.noReason')),
+      t('temporal.reason') + ': ' + (temporal.reason ? (reason === reasonKey ? temporal.reason : reason) : t('temporal.noReason')),
       t('temporal.evidence') + ': ' + (temporal.evidence_frames ?? '—'),
       t('temporal.near') + ': ' + t(typeof temporal.near_guard_clear !== 'boolean' ? 'temporal.unknown' : temporal.near_guard_clear ? 'temporal.yes' : 'temporal.no'),
       Array.isArray(temporal.spatial?.boundary) && temporal.spatial.boundary.length ? t('temporal.boundary') + ': ' + temporal.spatial.boundary.length : t('temporal.noBoundary'),

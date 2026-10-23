@@ -95,7 +95,11 @@ def test_orphan_proof_failure_does_not_stop_any_unit(orphan, failure):
 
 def test_profile_change_cannot_adopt_or_stop_orphan(orphan):
     instance, manager, _ = orphan
-    response, code = instance.execute(command("configure", profile=dict(store.DEFAULT_PROFILE, local_engine="ssd")))
+    # Isolate camera ownership. Provider changes have an earlier, separately
+    # tested DISARMED/model-selection gate; a transport-only edit reaches OFF.
+    response, code = instance.execute(
+        command("configure", profile=dict(store.DEFAULT_PROFILE, remote_transport="mjpeg"))
+    )
     assert code == 409
     assert response["error"] == "camera_pipeline_camera_not_released"
     assert manager.calls == []

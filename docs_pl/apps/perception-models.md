@@ -106,3 +106,6 @@ API odrzuca wynik starszej konfiguracji lub innego silnika.
 RAW nie otrzymuje tożsamości modelu. Po zamknięciu producenta bufor jest pusty.
 Panel nadal odrzuca odpowiedzi z poprzedniej sesji/epoch, także po restarcie
 tego samego profilu; czas odczytu HTTP nie zastępuje czasu przechwycenia.
+
+
+Powiązane: [profile nawigacji i SLOW](navigation-profiles.md).
