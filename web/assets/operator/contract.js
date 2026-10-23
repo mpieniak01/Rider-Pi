@@ -1,7 +1,7 @@
 // One HTTP decoder for every operator screen. No timestamps are synthesized.
 export const API_ACCEPT = 'application/vnd.rider.api+json;version=1';
 const versions = Object.fromEntries(['safety', 'telemetry', 'system', 'health', 'resources', 'frames', 'obstacle',
-  'navigation', 'odometry', 'calibration', 'providers', 'models', 'voice', 'chat', 'face', 'google_feed', 'home',
+  'navigation_loop', 'compute', 'navigation', 'odometry', 'calibration', 'providers', 'models', 'voice', 'chat', 'face', 'google_feed', 'home',
   'camera_pipeline', 'api_metrics', 'version', 'network', 'mcp', 'project', 'knowledge', 'assistant', 'http'].map(name => ['rider.' + name, 1]));
 Object.assign(versions, { 'rider.catalog': 2, 'rider.tasks': 2, 'rider.services': 2, 'rider.service_graph': 2 });
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -15,6 +15,7 @@ export function responseFamily(path) {
   if (['/api/resource/camera/pipeline', '/api/resource/camera/frame', '/api/resource/camera/stream.mjpg'].includes(clean)) return 'rider.camera_pipeline';
   for (const [prefixes, name] of [
     [['/api/control', '/api/safety', '/api/motion', '/api/flags', '/api/stop', '/api/cmd'], 'safety'],
+    [['/api/navigation'], 'navigation_loop'], [['/api/compute'], 'compute'],
     [['/api/calibration'], 'calibration'], [['/api/odometry'], 'odometry'], [['/api/navigator'], 'navigation'],
     [['/api/logic/catalog'], 'catalog'], [['/api/logic/'], 'tasks'],
     [['/api/services/graph'], 'service_graph'], [['/svc', '/api/services'], 'services'],

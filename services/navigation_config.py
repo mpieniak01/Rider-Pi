@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from services.compute_config import _lock, _require_idle_goals, _selection_lock, _write
+from services.perception_selection import IDENTITY_FIELDS, drive_supported, identity, validate_identity
 
 DEFAULT = {
     "protocol_version": 1,
@@ -76,8 +77,14 @@ def _validate_command_policy(data):
 
 
 def _validated_perception(perception):
-    if not isinstance(perception, dict) or set(perception) != set(DEFAULT["perception"]):
+    required = set(DEFAULT["perception"])
+    if (
+        not isinstance(perception, dict)
+        or not required <= set(perception)
+        or set(perception) - required - IDENTITY_FIELDS
+    ):
         raise ValueError("navigation_perception_invalid")
+    validate_identity(perception)
     if not isinstance(perception["engine"], str) or perception["engine"] not in {"segformer", "depth_plane"}:
         raise ValueError("navigation_perception_invalid")
     for key, low, high in (("residual_limit", 0.01, 0.15), ("outlier_limit", 0.0, 0.02), ("slope_min", 1.0, 4.0)):
@@ -179,6 +186,11 @@ def validate(data):
     if data["mode"] == "drive" and (not data["verified"] or not data["calibration_id"] or not data["model_sha256"]):
         raise ValueError("navigation_validation_required")
     perception = _validated_perception(data["perception"])
+    if data["mode"] == "drive":
+        if not drive_supported(perception):
+            raise ValueError("navigation_model_observe_only")
+        if perception.get("model_id") and data["model_sha256"] != perception.get("artifact_sha256"):
+            raise ValueError("navigation_model_approval_mismatch")
     avoidance = _validated_avoidance(data["avoidance"])
     geometry = _validated_geometry(avoidance["geometry"])
     _validate_avoidance_authority(data, perception, avoidance, geometry)
@@ -252,6 +264,14 @@ def configure_locked(body):
             _require_idle_goals()
         _require_navigation_goals_stopped()
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
+        # Model identities are committed by the host-coordinated endpoint only.
+        proposed_perception = proposed.get("perception")
+        _validated_perception(proposed_perception)
+        if identity(proposed_perception) != identity(old["perception"]):
+            raise ValueError("navigation_model_selection_required")
+        engine_changed = proposed_perception["engine"] != old["perception"]["engine"]
+        if engine_changed and proposed_perception.get("model_id"):
+            raise ValueError("navigation_model_selection_required")
         changed = any(
             proposed[k] != old[k]
             for k in (
@@ -270,6 +290,16 @@ def configure_locked(body):
             and (proposed["calibration_id"] == old["calibration_id"] or body["values"].get("verified") is not True)
         ):
             proposed.update(verified=False, mode="observe")
-        data = validate(proposed)
-        _write(path(), data)
+        if engine_changed:
+            from apps.motion import manual_settings
+            from services.perception_selection import _reset_approval, require_idle
+
+            with manual_settings.locked(blocking=False):
+                require_idle()
+                _reset_approval(proposed)
+                data = validate(proposed)
+                _write(path(), data)
+        else:
+            data = validate(proposed)
+            _write(path(), data)
     return data

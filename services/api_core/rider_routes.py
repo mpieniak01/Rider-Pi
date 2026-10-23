@@ -35,6 +35,12 @@ def register_compute(app):
         view_func=navigation_api.config_handler,
         methods=["GET", "POST"],
     )
+    app.add_url_rule("/api/navigation/local-models", view_func=navigation_api.local_models_handler, methods=["GET"])
+    app.add_url_rule("/api/navigation/models", view_func=navigation_api.models_handler, methods=["GET"])
+    app.add_url_rule("/api/navigation/model", view_func=navigation_api.model_handler, methods=["POST"])
+    app.add_url_rule(
+        "/api/navigation/model-selection", view_func=navigation_api.model_selection_handler, methods=["POST"]
+    )
     app.add_url_rule("/api/compute/config", view_func=compute_api.config_handler, methods=["GET", "POST", "OPTIONS"])
     app.add_url_rule("/api/compute/status", view_func=compute_api.status_handler, methods=["GET"])
     app.add_url_rule("/api/compute/tasks/<task>", view_func=compute_api.task_handler, methods=["POST"])

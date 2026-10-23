@@ -419,6 +419,8 @@ class NavigationRunner(NavigationCycle):
             "generation": self.generation,
             "operator_request_id": (self.intent or {}).get("request_id"),
             "config_revision": self.policy["revision"],
+            "model_id": self.policy["perception"].get("model_id"),
+            "artifact_sha256": self.policy["perception"].get("artifact_sha256"),
             "decision": decision,
             "request_roundtrip_ms": self.request_roundtrip_ms,
             "decision_transport": self.decision_transport.status()

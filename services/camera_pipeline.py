@@ -252,17 +252,37 @@ class CameraPipeline:
     def _configure_pipeline(self, profile, config):
         self._available(profile)
         changed = profile != config["profile"]
-        if changed or not store.enabled():
-            resume_preview = bool(set(self.manager.resource_consumers().get("camera", [])) & set(CAMERA_GOALS))
-            self._stop()
-            config = {**config, "revision": config["revision"] + int(changed), "profile": dict(profile)}
-            store.write(config)
-            # Only preserve camera demand. Never recreate analysis, a
-            # navigation intention, motion authority or an ARM lease.
-            if resume_preview:
-                result = self.manager.set_feature("s2_camera_preview", True)
-                if not result.get("ok"):
-                    raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
+        if not changed and store.enabled():
+            return
+        selection_changed = any(profile[key] != config["profile"][key] for key in ("analysis_location", "local_engine"))
+        if selection_changed:
+            from apps.motion import manual_settings
+            from services.perception_selection import require_idle, revoke_approval_locked
+
+            try:
+                with manual_settings.locked(blocking=False):
+                    require_idle()
+                    revoke_approval_locked()
+                    self._configure_idle_profile(profile, config, changed)
+            except (BlockingIOError, TimeoutError) as exc:
+                raise PipelineError("navigation_model_selection_busy") from exc
+            except ValueError as exc:
+                code = str(exc)
+                raise PipelineError(code, 503 if code.endswith("_unavailable") else 409) from exc
+        else:
+            self._configure_idle_profile(profile, config, changed)
+
+    def _configure_idle_profile(self, profile, config, changed):
+        resume_preview = bool(set(self.manager.resource_consumers().get("camera", [])) & set(CAMERA_GOALS))
+        self._stop()
+        config = {**config, "revision": config["revision"] + int(changed), "profile": dict(profile)}
+        store.write(config)
+        # Only preserve camera demand. Never recreate analysis, a
+        # navigation intention, motion authority or an ARM lease.
+        if resume_preview:
+            result = self.manager.set_feature("s2_camera_preview", True)
+            if not result.get("ok"):
+                raise PipelineError(result.get("error") or "camera_pipeline_start_failed", 503)
 
     def _apply_pipeline_action(self, data, config, preempted):
         action = data["action"]

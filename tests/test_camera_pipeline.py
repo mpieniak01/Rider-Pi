@@ -121,7 +121,7 @@ def test_profile_revision_request_replay_and_start_stop():
 
 def test_stale_revision_and_reused_request_id_never_mutate():
     instance = pipeline()
-    body = command("configure", profile=dict(store.DEFAULT_PROFILE, local_engine="ssd"))
+    body = command("configure", profile=dict(store.DEFAULT_PROFILE, remote_transport="mjpeg"))
     result, _ = instance.execute(body)
     conflicting = command("stop", request_id=body["request_id"], revision=2)
     response, code = instance.execute(conflicting)

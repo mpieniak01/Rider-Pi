@@ -241,3 +241,7 @@ motion after a newer STOP.
 `apps.compute.navigation_cycle.NavigationCycle` separates one frame → provider
 request → decision qualification → status cycle. It remains part of the existing
 loop, without a new thread, service or actuator owner.
+
+## Perception provider and model
+
+[Perception provider and model](perception-models.md).

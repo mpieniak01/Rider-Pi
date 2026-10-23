@@ -25,6 +25,18 @@
 <h2 data-pl="Zadania mapowania i nawigacji" data-en="Mapping and navigation tasks">Zadania mapowania i nawigacji</h2><p id="catalog-status">unknown</p><div id="task-list" class="operator-grid"></div>
 <section class="c-card"><h2 data-pl="Wizja i ruch przez Venom" data-en="Vision and movement via Venom">Wizja i ruch przez Venom</h2>
 <p data-pl="Obserwacja nie porusza robotem. Jazda wymaga odbioru strefy zatrzymania, osobnego ARM navigation i świeżych decyzji. Brak odpowiedzi zatrzymuje Pi." data-en="Observation does not move the robot. Driving requires an accepted stopping zone, separate navigation ARM and fresh decisions. Missing responses stop Pi.">Obserwacja nie porusza robotem. Jazda wymaga odbioru strefy zatrzymania, osobnego ARM navigation i świeżych decyzji. Brak odpowiedzi zatrzymuje Pi.</p>
+<section aria-labelledby="perception-title">
+<h3 id="perception-title" data-pl="Dostawca i model analizy" data-en="Analysis provider and model">Dostawca i model analizy</h3>
+<p data-pl="Wagi modeli Venom są zarządzane na hoście Venom. Lokalny model Pi pochodzi z istniejącego toru kamery. Przed zmianą rozbrój robota i zatrzymaj pętle analizy oraz zadania ruchowe. Zmiana nie uruchamia kamery ani robota i kasuje odbiór jazdy." data-en="Venom model weights are managed on Venom. Local Pi analysis uses the existing camera pipeline. Disarm the robot and stop analysis loops and moving tasks before changing. Selection never starts camera or motion and clears driving acceptance.">Wagi modeli Venom są zarządzane na hoście Venom. Lokalny model Pi pochodzi z istniejącego toru kamery. Przed zmianą rozbrój robota i zatrzymaj pętle analizy oraz zadania ruchowe. Zmiana nie uruchamia kamery ani robota i kasuje odbiór jazdy.</p>
+<div class="operator-row">
+<label><span data-pl="Dostawca" data-en="Provider">Dostawca</span><select id="perception-provider"></select></label>
+<button id="perception-provider-apply" type="button" class="c-btn c-btn-sm" data-pl="Zastosuj dostawcę" data-en="Apply provider">Zastosuj dostawcę</button>
+<label><span data-pl="Model dostawcy" data-en="Provider model">Model dostawcy</span><select id="perception-model"></select></label>
+<button id="perception-model-apply" type="button" class="c-btn" data-pl="Zastosuj model — obserwacja" data-en="Apply model — observation">Zastosuj model — obserwacja</button>
+<button id="perception-refresh" type="button" class="c-btn c-btn-sm" data-pl="Odśwież modele" data-en="Refresh models">Odśwież modele</button>
+</div><p id="perception-state" role="status">unknown</p><p id="perception-selected"></p><p id="perception-active"></p><p id="perception-error" role="alert"></p>
+<p data-pl="Canny jest algorytmem krawędzi, a SSD/TFLite detektorami obiektów. Nie są zamiennikami segmentacji podłogi ani potwierdzeniem gotowości do jazdy." data-en="Canny is an edge algorithm; SSD/TFLite are object detectors. They do not provide floor segmentation or prove driving readiness.">Canny jest algorytmem krawędzi, a SSD/TFLite detektorami obiektów. Nie są zamiennikami segmentacji podłogi ani potwierdzeniem gotowości do jazdy.</p>
+</section>
 <button id="remote-load" type="button" class="c-btn" data-pl="Odczytaj ustawienia Pi" data-en="Read Pi settings">Odczytaj ustawienia Pi</button>
 <div class="operator-grid">
 <label>Tryb / Mode <select id="remote-mode"><option value="observe">Obserwacja / Observe</option><option value="drive">Jazda / Drive</option></select></label>
@@ -47,7 +59,7 @@
 
 </main>
 <footer class="layout-footer" data-dashboard-footer-target></footer>
-<script type="module" src="/web/assets/operator/app.js?v=motion-curves-14"></script>
+<script type="module" src="/web/assets/operator/app.js?v=perception-models-1"></script>
 <script type="module" src="/web/assets/menu.js"></script>
 <script type="module" src="/web/assets/footer.js?v=overview-restored-2"></script>
 </body>

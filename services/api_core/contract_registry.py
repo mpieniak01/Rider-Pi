@@ -26,7 +26,16 @@ _GROUPS = {
     "rider.audio": (1, ('/api/voice/playback', '/api/voice/playback/cancel')),
     "rider.navigation_loop": (
         1,
-        ("/api/navigation/config", "/api/navigation/status", "/api/navigation/trial", "/api/navigation/journey"),
+        (
+            "/api/navigation/config",
+            "/api/navigation/status",
+            "/api/navigation/trial",
+            "/api/navigation/journey",
+            "/api/navigation/models",
+            "/api/navigation/local-models",
+            "/api/navigation/model",
+            "/api/navigation/model-selection",
+        ),
     ),
     "rider.transport": (1, ("/api/v1/transport/identity",)),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),

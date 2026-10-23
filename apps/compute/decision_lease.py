@@ -158,6 +158,19 @@ class DecisionLease:
         return True
 
     def _admit_decision(self, decision, frame_id, sequence, captured_monotonic, now):
+        from services.perception_selection import drive_supported
+
+        perception = self.config.get("perception", {})
+        if not drive_supported(perception):
+            self._halt("navigation_model_observe_only")
+            return None
+        if perception.get("model_id") and (
+            not isinstance(decision, dict)
+            or decision.get("model_id") != perception["model_id"]
+            or decision.get("artifact_sha256") != perception.get("artifact_sha256")
+        ):
+            self._halt("navigation_model_identity_mismatch")
+            return None
         identity = {
             "protocol_version": self.config.get("avoidance", {}).get("protocol_version", 2)
             if self.config.get("avoidance", {}).get("enabled")

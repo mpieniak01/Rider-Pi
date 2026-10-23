@@ -17,6 +17,9 @@ def config_handler():
             "navigation_configuration_conflict",
             "compute_stop_goals_first",
             "navigation_stop_goals_first",
+            "navigation_model_selection_required",
+            "navigation_model_requires_idle_disarmed",
+            "navigation_model_stop_loops_first",
         } else 400
     except OSError:
         return jsonify({"error": "navigation_persistence_failed"}), 503
@@ -125,3 +128,53 @@ def _start_handler(starter_class, key):
         return jsonify({"ok": False, "error": exc.code, "details": exc.details}), exc.status
     except (OSError, ValueError):
         return jsonify({"ok": False, "error": "navigation_trial_prepare_failed"}), 503
+
+
+def _model_response(action):
+    from apps.compute.client import ComputeError
+
+    try:
+        response = jsonify(action())
+        response.headers["Cache-Control"] = "no-store"
+        return response, 200
+    except ComputeError as exc:
+        return jsonify({"error": exc.code}), exc.status if 400 <= exc.status <= 599 else 503
+    except (BlockingIOError, TimeoutError):
+        return jsonify({"error": "navigation_model_selection_busy"}), 409
+    except ValueError as exc:
+        code = str(exc)
+        conflict = {
+            "navigation_configuration_conflict",
+            "navigation_model_requires_idle_disarmed",
+            "navigation_model_stop_loops_first",
+        }
+        unavailable = {"navigation_goal_state_unavailable"}
+        return jsonify({"error": code}), 503 if code in unavailable else 409 if code in conflict else 400
+    except OSError:
+        return jsonify({"error": "navigation_model_unavailable"}), 503
+
+
+def models_handler():
+    from services.perception_proxy import catalog
+
+    return _model_response(catalog)
+
+
+def model_handler():
+    from services.perception_proxy import choose
+
+    return _model_response(lambda: choose(request.get_json(silent=True)))
+
+
+def model_selection_handler():
+    from services.perception_selection import select
+
+    return _model_response(lambda: {"ok": True, "persisted": True, "config": select(request.get_json(silent=True))})
+
+
+def local_models_handler():
+    from services.perception_local import catalog
+
+    from .camera_pipeline_api import _pipeline
+
+    return _model_response(lambda: catalog(_pipeline().status()))
