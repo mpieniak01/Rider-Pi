@@ -10,9 +10,13 @@ def _present_config(config):
     from services.navigation_profiles import catalog
     from services.perception_tuning import presentation
 
-    eligible = camera_configuration()["profile"]["analysis_location"] == "venom"
+    try:
+        eligible = camera_configuration()["profile"]["analysis_location"] == "venom"
+        reason = "" if eligible else "navigation_profile_local_executor"
+    except (OSError, ValueError, KeyError):
+        eligible, reason = False, "camera_pipeline_config_unavailable"
     behavior = catalog(config.get("behavior"), config.get("perception"))
-    behavior.update(execution_eligible=eligible, reason="" if eligible else "navigation_profile_local_executor")
+    behavior.update(execution_eligible=eligible, reason=reason)
     return {
         **config,
         "behavior_catalog": behavior,
