@@ -291,7 +291,8 @@ def test_custom_policy_persists_with_revision_and_resets_approval(policy_store):
     saved = navigation_config.configure({"revision": 0, "values": {"behavior": selected}})
     assert saved["behavior"] == selected
     assert navigation_config.snapshot()["behavior"] == selected
-    assert saved["mode"] == "observe" and saved["verified"] is False
+    assert saved["mode"] == "observe"
+    assert saved["verified"] is False
     assert saved["avoidance"]["sweep_verified"] is False
     assert parameters(selected)["obstacle_support_frames"] == 3
     assert policy_digest(selected) != policy_digest({**selected, "overrides": {}})

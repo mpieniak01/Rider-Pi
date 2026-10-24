@@ -30,6 +30,37 @@ def number(value, low, high):
     return type(value) in (int, float) and low <= value <= high and math.isfinite(value)
 
 
+def valid_point(point):
+    return isinstance(point, list) and len(point) == 2 and all(number(v, 0, 1) for v in point)
+
+
+def valid_edge(edge):
+    return (
+        isinstance(edge, list)
+        and len(edge) == 2
+        and all(valid_point(point) for point in edge)
+        and edge[0][1] < edge[1][1]
+    )
+
+
+def valid_edges(left, right):
+    return all(valid_edge(edge) for edge in (left, right)) and all(
+        abs(a[1] - b[1]) <= 1e-6 and b[0] - a[0] >= 0.01 for a, b in zip(left, right)
+    )
+
+
+def valid_markers(marks):
+    return (
+        isinstance(marks, list)
+        and 2 <= len(marks) <= 8
+        and all(
+            isinstance(point, list) and len(point) == 2 and number(point[0], 0.1, 1000) and number(point[1], 0, 1)
+            for point in marks
+        )
+        and all(a[0] < b[0] and a[1] > b[1] for a, b in zip(marks, marks[1:]))
+    )
+
+
 def validate(values):
     invalid = ValueError("image_reference_invalid")
     if not isinstance(values, dict) or set(values) != FIELDS:
@@ -50,29 +81,9 @@ def validate(values):
             raise invalid
     if values["robot_width_cm"] > values["track_width_cm"]:
         raise invalid
-    for key in ("left_edge", "right_edge"):
-        edge = values[key]
-        if (
-            not isinstance(edge, list)
-            or len(edge) != 2
-            or any(not isinstance(p, list) or len(p) != 2 or not all(number(v, 0, 1) for v in p) for p in edge)
-            or edge[0][1] >= edge[1][1]
-        ):
-            raise invalid
-    for left, right in zip(values["left_edge"], values["right_edge"]):
-        if abs(left[1] - right[1]) > 1e-6 or right[0] - left[0] < 0.01:
-            raise invalid
-    marks = values["markers"]
-    if (
-        not isinstance(marks, list)
-        or not 2 <= len(marks) <= 8
-        or any(
-            not isinstance(p, list) or len(p) != 2 or not number(p[0], 0.1, 1000) or not number(p[1], 0, 1)
-            for p in marks
-        )
-    ):
+    if not valid_edges(values["left_edge"], values["right_edge"]):
         raise invalid
-    if any(a[0] >= b[0] or a[1] <= b[1] for a, b in zip(marks, marks[1:])):
+    if not valid_markers(values["markers"]):
         raise invalid
     return copy.deepcopy(values)
 

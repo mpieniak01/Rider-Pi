@@ -14,7 +14,7 @@ function selection(value) {
 }
 function sameSelection(a, b) {
   return a.profile_id === b.profile_id && a.profile_revision === b.profile_revision
-    && JSON.stringify(Object.entries(a.overrides || {}).sort()) === JSON.stringify(Object.entries(b.overrides || {}).sort());
+    && JSON.stringify(Object.entries(a.overrides || {}).sort(([left], [right]) => left.localeCompare(right))) === JSON.stringify(Object.entries(b.overrides || {}).sort(([left], [right]) => left.localeCompare(right)));
 }
 function profileLabel(value) {
   const label = t('behavior.profile.' + value.profile_id);
@@ -123,7 +123,8 @@ export class NavigationProfiles {
     text('navigation-profile-provider-hint', this.pipeline?.profile?.analysis_location === 'local'
       ? t('behavior.localOnly', { model: this.pipeline.profile.local_engine || '—' }) : '');
     text('navigation-profile-experimental', row?.status === 'experimental' ? t('behavior.experimentalHint') : '');
-    text('navigation-profile-parameters', catalog.supported ? JSON.stringify(!this.draft && catalog.active_parameters ? catalog.active_parameters : row?.parameters || {}, null, 2) : '');
+    const displayedParameters = !this.draft && catalog.active_parameters ? catalog.active_parameters : row?.parameters || {};
+    text('navigation-profile-parameters', catalog.supported ? JSON.stringify(displayedParameters, null, 2) : '');
     text('navigation-profile-hash', catalog.supported ? t('behavior.effectiveHash') + ': ' + catalog.effective_policy_sha256 : '');
     const block = this.blocked();
     text('navigation-profile-message', this.error || block ? t(this.error || block, { model: this.pipeline?.profile?.local_engine || '—' }) : this.saved === this.policy?.revision ? t('behavior.saved', { revision: this.saved }) : '');
