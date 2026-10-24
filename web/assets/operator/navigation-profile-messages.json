@@ -463,5 +463,10 @@
     "Nieznany",
     "Unknown",
     "Unbekannt"
+  ],
+  "behavior.custom": [
+    "Własny na bazie: {profile}",
+    "Custom based on: {profile}",
+    "Eigene auf Basis: {profile}"
   ]
 }
