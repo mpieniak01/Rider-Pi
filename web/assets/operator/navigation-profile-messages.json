@@ -35,9 +35,9 @@
     "Modelleinstellungen wurden nicht gespeichert. Zustand aktualisieren und Diagnose prüfen."
   ],
   "tuning.invalid": [
-    "Wpisz skończone wartości w pokazanych zakresach lub wybierz dziedziczenie.",
-    "Enter finite values within the shown bounds or choose inheritance.",
-    "Endliche Werte innerhalb der angezeigten Grenzen eingeben oder Übernahme wählen."
+    "Wpisz liczby w podanych zakresach albo wybierz wartości z szablonu.",
+    "Enter numbers within the shown ranges or use the preset values.",
+    "Zahlen innerhalb der angegebenen Bereiche eingeben oder Vorlagenwerte verwenden."
   ],
   "tuning.pending": [
     "Zmiany modelu oczekują na zapis.",
@@ -75,9 +75,9 @@
     "Eigener Wert für dieses Modell"
   ],
   "tuning.inherit": [
-    "Dziedzicz z profilu jazdy",
-    "Inherit driving profile",
-    "Vom Fahrprofil übernehmen"
+    "Użyj wartości z szablonu",
+    "Use preset value",
+    "Vorlagenwert verwenden"
   ],
   "tuning.min_region_fraction": [
     "Minimalny udział obszaru (0–0,02)",
@@ -235,9 +235,9 @@
     "Dieses Profil benötigt kompatible Venom- und Pi-Versionen."
   ],
   "behavior.title": [
-    "Poziom ostrożności jazdy",
-    "Driving caution level",
-    "Vorsichtsstufe beim Fahren"
+    "Ocena przeszkód",
+    "Obstacle assessment",
+    "Hindernisbewertung"
   ],
   "behavior.hint": [
     "Wybierz reakcję na szum i krótką niepewność obrazu. STOP operatora, świeżość danych i bliska strefa zatrzymania obowiązują w każdym profilu.",
@@ -245,9 +245,9 @@
     "Reaktion auf Bildrauschen und kurze Unsicherheit wählen. Bediener-STOP, Datenaktualität und Nahbereichsstopp gelten in jedem Profil."
   ],
   "behavior.select": [
-    "Poziom ostrożności",
-    "Caution level",
-    "Vorsichtsstufe"
+    "Szablon ustawień",
+    "Settings preset",
+    "Einstellungsvorlage"
   ],
   "behavior.profile.legacy": [
     "Dotychczasowy (Legacy)",
@@ -275,19 +275,19 @@
     "Bisherige Bewertung einzelner Modellergebnisse für die Kompatibilität."
   ],
   "behavior.description.cautious": [
-    "Mniejsza tolerancja krótkiej niepewności i wcześniejsze ostrzeganie. Parametry pochodzą z urządzenia.",
-    "Lower tolerance for brief uncertainty and earlier warnings. Parameters come from the device.",
-    "Geringere Toleranz kurzer Unsicherheit und frühere Warnungen. Parameter kommen vom Gerät."
+    "Reaguje ostrożniej na niepewny obraz i wcześniej ostrzega o możliwej przeszkodzie.",
+    "Responds cautiously to uncertain images and warns earlier about possible obstacles.",
+    "Reagiert vorsichtiger auf unsichere Bilder und warnt früher vor möglichen Hindernissen."
   ],
   "behavior.description.balanced": [
-    "Równowaga między potwierdzaniem obszarów w czasie a płynnością jazdy. Parametry pochodzą z urządzenia.",
-    "Balances temporal region confirmation and driving continuity. Parameters come from the device.",
-    "Gleichgewicht zwischen zeitlicher Bereichsbestätigung und Fahrkontinuität. Parameter kommen vom Gerät."
+    "Łączy potwierdzanie przeszkód w kolejnych obrazach z płynną reakcją na krótkie błędy rozpoznawania.",
+    "Combines confirmation across images with a smooth response to brief recognition errors.",
+    "Verbindet die Bestätigung über mehrere Bilder mit einer ruhigen Reaktion auf kurze Erkennungsfehler."
   ],
   "behavior.description.fluid": [
-    "Większa tolerancja krótkiego szumu przy potwierdzonym bliskim torze. Nie wyłącza zatrzymania ani kontroli świeżości.",
-    "More tolerance for brief noise with a confirmed near corridor. Stops and freshness checks remain active.",
-    "Höhere Toleranz kurzen Rauschens bei bestätigtem Nahkorridor. Stopp und Aktualitätsprüfung bleiben aktiv."
+    "Łagodzi reakcję na krótkie błędy rozpoznawania, gdy droga tuż przed robotem jest potwierdzona jako wolna.",
+    "Tolerates brief recognition errors when the route immediately ahead is confirmed clear.",
+    "Toleriert kurze Erkennungsfehler, wenn der Weg unmittelbar vor dem Roboter als frei bestätigt ist."
   ],
   "behavior.experimental": [
     "Eksperymentalny",
@@ -295,19 +295,19 @@
     "Experimentell"
   ],
   "behavior.experimentalHint": [
-    "Profil wymaga lokalnego odbioru. Zastosowanie zapisuje tryb obserwacji i kasuje odbiór jazdy; nie uruchamia kamery ani ruchu.",
-    "This profile needs local acceptance. Applying selects observation and clears driving acceptance; it starts neither camera nor motion.",
-    "Dieses Profil erfordert lokale Abnahme. Anwenden wählt Beobachtung und löscht die Fahrfreigabe; Kamera und Bewegung werden nicht gestartet."
+    "Przed jazdą sprawdź działanie ustawień na podglądzie. Zapis przełącza na obserwację i wymaga ponownego potwierdzenia jazdy.",
+    "Check these settings in the preview before driving. Saving selects observation and requires driving confirmation again.",
+    "Einstellungen vor der Fahrt in der Vorschau prüfen. Speichern wählt Beobachtung und erfordert eine erneute Fahrtbestätigung."
   ],
   "behavior.apply": [
-    "Zastosuj profil — obserwacja",
-    "Apply profile — observation",
-    "Profil anwenden — Beobachtung"
+    "Zapisz ustawienia",
+    "Save settings",
+    "Einstellungen speichern"
   ],
   "behavior.applyHint": [
-    "Zapisz wyłącznie wybrany profil we wspólnej konfiguracji Pi. Kamera zachowuje swój stan.",
-    "Save only the selected profile in the shared Pi configuration. The camera keeps its state.",
-    "Nur das gewählte Profil in der gemeinsamen Pi-Konfiguration speichern. Der Kamerazustand bleibt erhalten."
+    "Zapisz wybrany szablon i własne zmiany na robocie.",
+    "Save the selected preset and custom changes on the robot.",
+    "Gewählte Vorlage und eigene Änderungen auf dem Roboter speichern."
   ],
   "behavior.saving": [
     "Zapisywanie…",
@@ -315,34 +315,34 @@
     "Speichern…"
   ],
   "behavior.refresh": [
-    "Odśwież profil",
-    "Refresh profile",
-    "Profil aktualisieren"
+    "Odśwież ustawienia",
+    "Refresh settings",
+    "Einstellungen aktualisieren"
   ],
   "behavior.discard": [
-    "Odrzuć wybór i odśwież",
-    "Discard choice and refresh",
-    "Auswahl verwerfen und aktualisieren"
+    "Odrzuć niezapisane zmiany",
+    "Discard unsaved changes",
+    "Ungespeicherte Änderungen verwerfen"
   ],
   "behavior.current": [
-    "Zapisany: {profile} · konfiguracja r{revision}",
-    "Saved: {profile} · configuration r{revision}",
-    "Gespeichert: {profile} · Konfiguration r{revision}"
+    "Zapisane: {profile} · wersja konfiguracji {revision}",
+    "Saved: {profile} · configuration version {revision}",
+    "Gespeichert: {profile} · Konfigurationsversion {revision}"
   ],
   "behavior.draft": [
-    "Oczekuje na zastosowanie: {profile}",
-    "Pending application: {profile}",
-    "Ausstehende Anwendung: {profile}"
+    "Do zapisania: {profile}",
+    "Ready to save: {profile}",
+    "Zum Speichern: {profile}"
   ],
   "behavior.saved": [
-    "Profil zapisany w konfiguracji r{revision}. Obserwacja i ruch wymagają osobnej decyzji operatora.",
-    "Profile saved in configuration r{revision}. Observation and motion require separate operator intent.",
-    "Profil in Konfiguration r{revision} gespeichert. Beobachtung und Bewegung erfordern eine eigene Bedienerentscheidung."
+    "Zapisano ustawienia. Aby rozpocząć jazdę, ponownie sprawdź obraz i potwierdź ustawienia.",
+    "Settings saved. Before driving, check the image again and confirm the settings.",
+    "Einstellungen gespeichert. Vor der Fahrt das Bild erneut prüfen und Einstellungen bestätigen."
   ],
   "behavior.parameters": [
-    "Parametry profilu — tylko odczyt",
-    "Profile parameters — read only",
-    "Profilparameter — schreibgeschützt"
+    "Szczegóły i własne ustawienia",
+    "Details and custom settings",
+    "Details und eigene Einstellungen"
   ],
   "behavior.effectiveHash": [
     "SHA-256 efektywnej polityki",
@@ -465,8 +465,8 @@
     "Unbekannt"
   ],
   "behavior.custom": [
-    "Własny na bazie: {profile}",
-    "Custom based on: {profile}",
-    "Eigene auf Basis: {profile}"
+    "Własne ustawienia ({profile})",
+    "Custom settings ({profile})",
+    "Eigene Einstellungen ({profile})"
   ]
 }

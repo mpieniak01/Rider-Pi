@@ -73,7 +73,7 @@ test('apply submits only server profile revision and policy CAS, without ARM, ca
   assert.deepEqual(JSON.parse(JSON.stringify(posts[0].body)), { revision: 9, values: { behavior: { version: 1, profile_id: 'fluid', profile_revision: 1 } } });
   assert.equal(f.policy().mode, 'observe'); assert.equal(f.policy().verified, false);
   assert.equal(f.node('navigation-profile').value, 'fluid');
-  assert.match(f.node('navigation-profile-message').textContent, /Profile saved/);
+  assert.match(f.node('navigation-profile-message').textContent, /Settings saved/);
   assert.deepEqual(f.shown, []);
 });
 test('an edit cannot overwrite a newer revision polled from the other operator panel', async () => {
@@ -175,9 +175,9 @@ test('saved custom correction stays visible and can be reset to named preset', a
   const f = await fixture({ revisions2: true });
   f.changePolicy({ behavior: {version:1, profile_id:'fluid', profile_revision:2,overrides:{obstacle_support_frames:3}} });
   await f.panel.load();
-  assert.match(f.node('navigation-profile-current').textContent, /Custom based on/);
+  assert.match(f.node('navigation-profile-current').textContent, /Custom settings/);
   assert.match(f.node('navigation-profile-parameters').textContent, /obstacle_support_frames/);
   f.choose('fluid'); await f.panel.apply();
   assert.equal(f.policy().behavior.overrides, undefined);
-  assert.doesNotMatch(f.node('navigation-profile-current').textContent, /Custom based on/);
+  assert.doesNotMatch(f.node('navigation-profile-current').textContent, /Custom settings/);
 });
