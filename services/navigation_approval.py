@@ -4,6 +4,8 @@ from copy import deepcopy
 
 
 def approval_only(old, new):
+    if not isinstance(old.get("avoidance"), dict) or not isinstance(new.get("avoidance"), dict):
+        return False
     if (
         new.get("revision") != old.get("revision", -1) + 1
         or new.get("verified") is not True

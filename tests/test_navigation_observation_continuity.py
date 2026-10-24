@@ -161,3 +161,48 @@ def test_timeout_revokes_motion_but_does_not_close_the_passive_runner_on_stop_ra
     assert instance.lease.deadline is None
     assert instance.operator_lifecycle.last_journey["reason"] == "decision_timeout"
     assert all(command["action"] == "stop" for command in commands)
+
+
+@pytest.mark.parametrize("value", [None, [], "invalid", 1])
+def test_malformed_approval_does_not_bypass_validation_or_crash(world, value):
+    from services.navigation_approval import approval_only
+
+    old = navigation_config.snapshot()
+    proposed = {**acceptance(old), "revision": old["revision"] + 1, "avoidance": value}
+    assert approval_only(old, proposed) is False
+
+
+@pytest.mark.parametrize(
+    "change,safety_change,expected",
+    [
+        ({}, {}, True),
+        ({"running": False}, {}, False),
+        ({"mode": "drive"}, {}, False),
+        ({"config_revision": 99}, {}, False),
+        ({"sampled_monotonic": float("nan")}, {}, False),
+        ({"sampled_monotonic": 0}, {}, False),
+        ({}, {"stale": True}, False),
+        ({}, {"can_move": True, "owner": "navigation"}, False),
+        ({}, {"journey": {"active": True}}, False),
+    ],
+)
+def test_passive_s14_approval_requires_current_revision_and_revoked_authority(
+    world, monkeypatch, change, safety_change, expected
+):
+    import time
+
+    from services import navigation_approval, navigation_trial, safety_contract
+
+    status = {"running": True, "mode": "observe", "config_revision": 4, "sampled_monotonic": time.monotonic(), **change}
+    safety = {
+        "ready": True,
+        "stale": False,
+        "state": "DISARMED",
+        "can_move": False,
+        "owner": None,
+        "journey": {"active": False},
+        **safety_change,
+    }
+    monkeypatch.setattr(navigation_trial, "navigation_status", lambda: status)
+    monkeypatch.setattr(safety_contract, "read_status", lambda: safety)
+    assert navigation_approval.passive_navigation_matches(4) is expected
