@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 
+from services.policy_parameters import NEW_DEFAULTS, SCHEMA, validate_effective, validate_overrides
+
 DEFAULT_BEHAVIOR = {"version": 1, "profile_id": "legacy", "profile_revision": 1}
 _BASE = {
     "pixel_confidence": 0.75,
@@ -54,18 +56,43 @@ _OVERRIDES = {
 
 
 def validate_behavior(value):
+    required = set(DEFAULT_BEHAVIOR)
     if (
         not isinstance(value, dict)
-        or set(value) != set(DEFAULT_BEHAVIOR)
+        or not required <= set(value)
+        or set(value) - required - {"overrides"}
         or type(value.get("version")) is not int
         or value["version"] != 1
         or type(value.get("profile_revision")) is not int
-        or value["profile_revision"] != 1
+        or value["profile_revision"] not in (1, 2)
         or not isinstance(value.get("profile_id"), str)
         or value["profile_id"] not in {"legacy", *_OVERRIDES}
+        or value["profile_id"] == "legacy"
+        and value["profile_revision"] != 1
     ):
         raise ValueError("navigation_behavior_invalid")
-    return dict(value)
+    corrections = validate_overrides(value.get("overrides", {}))
+    if corrections and (value["profile_id"] == "legacy" or value["profile_revision"] != 2):
+        raise ValueError("navigation_behavior_overrides_invalid")
+    result = dict(value)
+    if corrections:
+        result["overrides"] = corrections
+        validate_effective({**_preset(result), **corrections})
+    else:
+        result.pop("overrides", None)
+    return result
+
+
+def _preset(behavior):
+    profile = behavior["profile_id"]
+    if profile == "legacy":
+        return {}
+    values = {**_BASE, **_OVERRIDES[profile]}
+    if behavior["profile_revision"] == 2:
+        values.update(NEW_DEFAULTS)
+        if profile == "fluid":
+            values["obstacle_support_frames"] = 2
+    return values
 
 
 def parameters(value, perception=None):
@@ -73,7 +100,7 @@ def parameters(value, perception=None):
     profile = behavior["profile_id"]
     if profile == "legacy":
         return {}
-    result = {**_BASE, **_OVERRIDES[profile]}
+    result = _preset(behavior)
     if perception is not None:
         from services.perception_tuning import (
             SEMANTIC_MODELS,
@@ -84,7 +111,8 @@ def parameters(value, perception=None):
 
         if active_model_id(perception) in SEMANTIC_MODELS and has_semantic_tuning(perception):
             result.update(semantic_parameters(perception, behavior))
-    return result
+    result.update(behavior.get("overrides", {}))
+    return validate_effective(result)
 
 
 def policy_digest(value, perception=None):
@@ -106,13 +134,21 @@ def catalog(value=None, perception=None):
         "version": 1,
         "supported": True,
         "active": active,
+        "parameter_editing_version": 1,
+        "parameter_schema": {key: dict(spec) for key, spec in SCHEMA.items()},
+        "active_parameters": parameters(active, perception),
+        "active_base_parameters": parameters({k: v for k, v in active.items() if k != "overrides"}, perception),
+        "custom": bool(active.get("overrides")),
         "effective_policy_sha256": policy_digest(active, perception),
         "profiles": [
             {
                 "id": name,
-                "profile_revision": 1,
+                "profile_revision": 1 if name == "legacy" else 2,
                 "status": "legacy" if name == "legacy" else "experimental",
-                "parameters": parameters({**DEFAULT_BEHAVIOR, "profile_id": name}, perception),
+                "parameters": parameters(
+                    {**DEFAULT_BEHAVIOR, "profile_id": name, "profile_revision": 1 if name == "legacy" else 2},
+                    perception,
+                ),
             }
             for name in ("legacy", *_OVERRIDES)
         ],
