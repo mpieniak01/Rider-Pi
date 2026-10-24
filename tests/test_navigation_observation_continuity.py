@@ -206,3 +206,34 @@ def test_passive_s14_approval_requires_current_revision_and_revoked_authority(
     monkeypatch.setattr(navigation_trial, "navigation_status", lambda: status)
     monkeypatch.setattr(safety_contract, "read_status", lambda: safety)
     assert navigation_approval.passive_navigation_matches(4) is expected
+
+
+@pytest.mark.parametrize(
+    "runner,expected",
+    [
+        ({}, 1),
+        ({"running": False}, 1),
+        ({"running": True}, 0),
+        ({"running": True, "approval_without_restart_version": True}, 0),
+        ({"running": True, "approval_without_restart_version": 1}, 1),
+    ],
+)
+def test_api_negotiates_with_the_running_process_during_a_rolling_update(world, monkeypatch, runner, expected):
+    from services import navigation_trial
+    from services.api_core.navigation_api import _present_config
+
+    monkeypatch.setattr(navigation_trial, "navigation_status", lambda: runner)
+    shown = _present_config(navigation_config.snapshot())
+    assert shown["approval_without_restart_version"] == expected
+
+
+def test_observer_status_advertises_its_actual_approval_capability(isolated, monkeypatch):
+    import os
+    from pathlib import Path
+
+    instance = navigation.NavigationRunner(observe_only=True)
+    instance._status(None)
+    row = json.loads(Path(os.environ["RIDER_NAVIGATION_STATUS"]).read_text())
+    assert row["approval_without_restart_version"] == 1
+    assert row["mode"] == "observe"
+    assert isolated[-1] == []

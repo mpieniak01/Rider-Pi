@@ -286,9 +286,12 @@ def configure_locked(body):
         from services.navigation_approval import approval_only
 
         approving = approval_only(old, proposed)
-        if not approving and set(body["values"]) != {"mode"}:
-            _require_idle_goals()
-        _require_navigation_goals_stopped(approval_revision=old["revision"] if approving else None)
+        if approving:
+            _require_navigation_goals_stopped(approval_revision=old["revision"])
+        else:
+            if set(body["values"]) != {"mode"}:
+                _require_idle_goals()
+            _require_navigation_goals_stopped()
         # Model identities are committed by the host-coordinated endpoint only.
         proposed_perception = proposed.get("perception")
         _validated_perception(proposed_perception)

@@ -432,6 +432,7 @@ class NavigationRunner(NavigationCycle):
         sampled = self.clock()
         row = {
             "observed_at": time.time(),
+            "approval_without_restart_version": 1,
             **self.operator_lifecycle.status(),
             "mode": self.policy["mode"],
             "run_id": self.run_id,
