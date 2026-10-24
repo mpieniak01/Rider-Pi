@@ -73,6 +73,7 @@ def semantic_parameters(perception, behavior=None, model_id=None):
     for name in LIMITS:
         if settings.get(name) is not None:
             resolved[name] = settings[name]
+    resolved.update((behavior or {}).get("overrides", {}))
     resolved["traversable_labels"] = [3, 28] if settings.get("surface") == "floor_rug" else [3]
     return validate_resolved_semantic(resolved)
 

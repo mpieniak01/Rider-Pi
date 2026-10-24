@@ -210,3 +210,32 @@ def local_models_handler():
     from .camera_pipeline_api import _pipeline
 
     return _model_response(lambda: catalog(_pipeline().status()))
+
+
+def image_reference_handler():
+    from services import image_reference
+
+    try:
+        if request.method == "GET":
+            return jsonify(image_reference.snapshot())
+        saved = image_reference.configure(request.get_json(silent=True))
+        from .http_contract import operation
+
+        operation(
+            {
+                "request_id": None,
+                "action": "configure",
+                "target": "image_reference",
+                "status": "executed",
+                "confirmed": True,
+                "ack_kind": "configuration_persisted",
+                "ack": {"revision": saved["revision"]},
+                "actuation": False,
+                "physical_completion": "not_applicable",
+            }
+        )
+        return jsonify(saved)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 409 if str(exc) == "image_reference_conflict" else 422
+    except OSError:
+        return jsonify(error="image_reference_persistence_failed"), 503

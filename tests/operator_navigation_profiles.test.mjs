@@ -8,14 +8,14 @@ const raw = (await readFile(sourceUrl, 'utf8')).replace(/^import .*;$/gm, '').re
 const messagesUrl = new URL('../web/assets/operator/navigation-profile-messages.js', import.meta.url);
 const messagesRaw = await readFile(messagesUrl, 'utf8');
 const translations = JSON.parse(await readFile(new URL('../web/assets/operator/navigation-profile-messages.json', import.meta.url), 'utf8'));
-async function fixture({ supported = true, state = 'DISARMED', running = false, failure = null, locale = 'en', provider = 'venom' } = {}) {
+async function fixture({ supported = true, state = 'DISARMED', running = false, failure = null, locale = 'en', provider = 'venom', revisions2 = false } = {}) {
   const calls = [], nodes = {}, shown = [];
   const node = id => nodes[id] ??= { value: '', dataset: {}, disabled: false, textContent: '', children: [], listeners: {},
     addEventListener(type, action) { this.listeners[type] = action; },
     replaceChildren(...children) { this.children = children; this.value = children.find(row => row.selected)?.value || children[0]?.value || ''; } };
   let policy = { revision: 9, behavior: { version: 1, profile_id: 'legacy', profile_revision: 1 } };
-  const catalog = () => ({ version: 1, supported, active: policy.behavior, effective_policy_sha256: 'a'.repeat(64),
-    profiles: ['legacy', 'cautious', 'balanced', 'fluid'].map(id => ({ id, profile_revision: 1, status: id === 'legacy' ? 'legacy' : 'experimental', parameters: { from_server: 137 } })) });
+  const catalog = () => ({ ...(revisions2 ? { parameter_editing_version: 1, active_parameters: { from_server: 137, ...policy.behavior.overrides } } : {}), version: 1, supported, active: policy.behavior, effective_policy_sha256: 'a'.repeat(64),
+    profiles: ['legacy', 'cautious', 'balanced', 'fluid'].map(id => ({ id, profile_revision: revisions2 && id !== 'legacy' ? 2 : 1, status: id === 'legacy' ? 'legacy' : 'experimental', parameters: { from_server: 137 } })) });
   policy.behavior_catalog = catalog();
   let status = { running, mode: running ? 'observe' : 'idle', stale: false };
   let fresh = true, postGate = null;
@@ -73,7 +73,7 @@ test('apply submits only server profile revision and policy CAS, without ARM, ca
   assert.deepEqual(JSON.parse(JSON.stringify(posts[0].body)), { revision: 9, values: { behavior: { version: 1, profile_id: 'fluid', profile_revision: 1 } } });
   assert.equal(f.policy().mode, 'observe'); assert.equal(f.policy().verified, false);
   assert.equal(f.node('navigation-profile').value, 'fluid');
-  assert.match(f.node('navigation-profile-message').textContent, /Profile saved/);
+  assert.match(f.node('navigation-profile-message').textContent, /Settings saved/);
   assert.deepEqual(f.shown, []);
 });
 test('an edit cannot overwrite a newer revision polled from the other operator panel', async () => {
@@ -159,4 +159,25 @@ test('server stop-loop and stopped-only failures retain draft and clear pending 
     assert.ok(f.panel.draft); assert.equal(f.panel.busy, false);
     assert.equal(f.shown.length, 1); assert.equal(f.policy().behavior.profile_id, 'legacy');
   }
+});
+
+
+test('v2 catalog preserves an old active revision and submits explicit upgrade', async () => {
+  const f = await fixture({ revisions2: true });
+  f.changePolicy({ behavior: {version:1, profile_id:'fluid', profile_revision:1} });
+  await f.panel.load();
+  assert.equal(f.node('navigation-profile').disabled, false);
+  assert.equal(f.policy().behavior.profile_revision, 1);
+  f.choose('fluid'); await f.panel.apply();
+  assert.equal(f.policy().behavior.profile_revision, 2);
+});
+test('saved custom correction stays visible and can be reset to named preset', async () => {
+  const f = await fixture({ revisions2: true });
+  f.changePolicy({ behavior: {version:1, profile_id:'fluid', profile_revision:2,overrides:{obstacle_support_frames:3}} });
+  await f.panel.load();
+  assert.match(f.node('navigation-profile-current').textContent, /Custom settings/);
+  assert.match(f.node('navigation-profile-parameters').textContent, /obstacle_support_frames/);
+  f.choose('fluid'); await f.panel.apply();
+  assert.equal(f.policy().behavior.overrides, undefined);
+  assert.doesNotMatch(f.node('navigation-profile-current').textContent, /Custom settings/);
 });

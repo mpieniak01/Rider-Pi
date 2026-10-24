@@ -401,3 +401,13 @@ wykrywanie, zapis podglądu i heartbeat, a następnie ograniczenie FPS. Te etapy
 należą do wnętrza pętli przechwytywania. Błędny odczyt lub provider PC pomija
 analizę; zakończenie zamyka kamerę i subskrypcję zmiany trybu. Detektor publikuje
 obserwację obecności i sam nie uzbraja ani nie uruchamia ruchu.
+
+### Odniesienia pomiarowe widoczne na obrazie
+
+`GET/POST /api/navigation/image-reference` odczytuje i zapisuje niezależne od sterowania odniesienia obrazu. POST przyjmuje `revision` i `values`; konflikt rewizji zwraca 409. Pi przechowuje je w `data/navigation_image_reference.json`. Odpowiedź ma `version=1` i `purpose=visual_reference_only`.
+
+Dane obejmują rozmiar źródłowej klatki, szerokość toru i robota, wysokość kamery, dwie krawędzie toru oraz pary odległość/współrzędna pionowa znaczników. Odniesienia dotyczą zmierzonej najniższej pozycji i są przybliżoną nakładką. Nie zastępują parametrów obiektywu, nie zapisują akceptacji jazdy i nie zmieniają progów modelu, polityki nawigacji, ARM ani ruchu. Panel pozwala przesuwać punkty przed jawnym zapisem na Pi.
+
+## Własne parametry operatora
+
+Profile w wersji 2 są stałymi zestawami wartości. Korekta tworzy ustawienia własne na bazie wybranego profilu; przywrócenie profilu usuwa korekty. Zapis odbywa się na Pi z kontrolą rewizji i bez uruchamiania jazdy. Wersja 1 zachowuje poprzednie wartości. [Parametry, zakresy i diagnostyka](../../docs/vision-policy-parameters.md).

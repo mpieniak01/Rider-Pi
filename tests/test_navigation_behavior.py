@@ -279,3 +279,58 @@ def test_legacy_keeps_old_wire_and_correct_explicit_profile():
 
     assert reply_valid({}, {"action": "go", "state": "clear"})
     assert reply_valid({}, {"action": "go", "state": "clear", "behavior": DEFAULT_BEHAVIOR})
+
+
+def test_custom_policy_persists_with_revision_and_resets_approval(policy_store):
+    selected = {
+        "version": 1,
+        "profile_id": "fluid",
+        "profile_revision": 2,
+        "overrides": {"obstacle_support_frames": 3, "object_growth_min": 1.2},
+    }
+    saved = navigation_config.configure({"revision": 0, "values": {"behavior": selected}})
+    assert saved["behavior"] == selected
+    assert navigation_config.snapshot()["behavior"] == selected
+    assert saved["mode"] == "observe"
+    assert saved["verified"] is False
+    assert saved["avoidance"]["sweep_verified"] is False
+    assert parameters(selected)["obstacle_support_frames"] == 3
+    assert policy_digest(selected) != policy_digest({**selected, "overrides": {}})
+    with pytest.raises(ValueError, match="conflict"):
+        navigation_config.configure({"revision": 0, "values": {"behavior": selected}})
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"enter_frames": True},
+        {"enter_frames": 2.5},
+        {"object_tracking_enabled": 1},
+        {"object_growth_min": float("nan")},
+        {"object_growth_min": 10**1000},
+        {"obstacle_support_frames": 5, "obstacle_window_frames": 3},
+        {"history_ms": 100, "max_gap_ms": 300},
+        {"unknown": 1},
+    ],
+)
+def test_custom_policy_invalid_values_are_not_persisted(policy_store, overrides):
+    with pytest.raises(ValueError, match="overrides_invalid"):
+        navigation_config.configure(
+            {
+                "revision": 0,
+                "values": {
+                    "behavior": {"version": 1, "profile_id": "fluid", "profile_revision": 2, "overrides": overrides}
+                },
+            }
+        )
+    assert navigation_config.snapshot()["revision"] == 0
+
+
+def test_revision1_is_not_migrated_to_bolder_preset():
+    old = behavior("fluid")
+    assert "obstacle_support_frames" not in parameters(old)
+    new = {**old, "profile_revision": 2}
+    assert parameters(new)["obstacle_support_frames"] == 2
+    assert catalog(old)["active"] == old
+    assert catalog(old)["parameter_editing_version"] == 1
+    assert catalog(old)["profiles"][-1]["profile_revision"] == 2

@@ -314,3 +314,13 @@ preview output and heartbeat, followed by the FPS limit. These stages belong
 inside the capture loop. Failed reads and PC provider mode skip analysis;
 termination closes the camera and mode subscription. The detector publishes
 presence observations and never arms or starts motion itself.
+
+### Measured image references
+
+`GET/POST /api/navigation/image-reference` reads and writes a Pi-owned display reference independently of motion policy. POST accepts `revision` and `values`; CAS conflicts return 409. Storage is `data/navigation_image_reference.json`, with response `version=1` and `purpose=visual_reference_only`.
+
+The source frame size, track/body widths, camera height, image edges and distance/vertical marker pairs describe an approximate reference for the measured lowest pose. Saving never changes lens intrinsics, navigation approval, model thresholds, motion policy or ARM. The panel permits dragging the points before an explicit save.
+
+## Operator policy corrections
+
+Navigation preset revision 2 supports bounded custom corrections while retaining the preset identity. See [Vision policy parameters](../vision-policy-parameters.md). Revision 1 settings remain pinned; saving corrections never starts navigation.
