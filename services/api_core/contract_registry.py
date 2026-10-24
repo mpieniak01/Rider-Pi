@@ -28,6 +28,7 @@ _GROUPS = {
         1,
         (
             "/api/navigation/config",
+            "/api/navigation/image-reference",
             "/api/navigation/status",
             "/api/navigation/trial",
             "/api/navigation/journey",

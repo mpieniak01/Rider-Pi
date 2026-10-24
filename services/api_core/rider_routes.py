@@ -12,6 +12,9 @@ def register_compute(app):
     transport_api.register(app)
     camera_pipeline_api.register(app)
     app.add_url_rule(
+        "/api/navigation/image-reference", view_func=navigation_api.image_reference_handler, methods=["GET", "POST"]
+    )
+    app.add_url_rule(
         "/api/navigation/trial",
         endpoint="navigation_trial_start",
         view_func=navigation_api.trial_handler,

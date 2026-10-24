@@ -210,3 +210,16 @@ def local_models_handler():
     from .camera_pipeline_api import _pipeline
 
     return _model_response(lambda: catalog(_pipeline().status()))
+
+
+def image_reference_handler():
+    from services import image_reference
+
+    try:
+        if request.method == "GET":
+            return jsonify(image_reference.snapshot())
+        return jsonify(image_reference.configure(request.get_json(silent=True)))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 409 if str(exc) == "image_reference_conflict" else 422
+    except OSError:
+        return jsonify(error="image_reference_persistence_failed"), 503
