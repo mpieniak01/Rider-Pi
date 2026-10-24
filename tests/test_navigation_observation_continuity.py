@@ -57,6 +57,7 @@ def test_observer_adopts_only_approval_revision_without_closing_source(isolated)
     assert not instance.closed.is_set()
     assert instance.saved_policy == policy
     assert instance.policy["mode"] == "observe"
+    assert instance.policy["revision"] == policy["revision"]
     assert instance.run_id != original_run
     assert instance.last_result is None
     assert instance.lease.deadline is None
@@ -237,3 +238,76 @@ def test_observer_status_advertises_its_actual_approval_capability(isolated, mon
     assert row["approval_without_restart_version"] == 1
     assert row["mode"] == "observe"
     assert isolated[-1] == []
+
+
+def test_approval_adoption_cannot_replace_a_concurrently_rebound_journey(isolated):
+    import threading
+
+    from test_journey_runner import runner
+
+    instance, safety = runner(isolated)
+    safety.update(state="DISARMED", can_move=False, owner=None, generation="revoked")
+    safety["journey"].update(active=False, reason="operator_stop")
+    assert instance._authority() is False
+    policy = isolated[0]
+    policy.update(acceptance(policy), revision=policy["revision"] + 1)
+    lifecycle = instance.operator_lifecycle
+    mutex = lifecycle.lock
+    waiting = threading.Event()
+    main_thread = threading.get_ident()
+    errors = []
+
+    class ContendedLock:
+        def __enter__(self):
+            if threading.get_ident() != main_thread:
+                waiting.set()
+            mutex.acquire()
+            return self
+
+        def __exit__(self, *_args):
+            mutex.release()
+
+    lifecycle.lock = ContendedLock()
+
+    def adopt():
+        try:
+            instance._start_cycle()
+        except Exception as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=adopt)
+    with mutex:
+        thread.start()
+        assert waiting.wait(2), "cycle did not contend with the authority transition"
+        safety.update(state="ARMED", can_move=True, owner="navigation", generation="new-authority")
+        safety["journey"].update(id="new-mission", active=True)
+        safety["operator_control"].update(state="qualifying", operation_id="new-arm")
+        isolated[3].update(generation="new-authority", request_id="new-start")
+        assert instance._authority() is True
+        admitted_lease, admitted_run = instance.lease, instance.run_id
+    thread.join(2)
+    assert not thread.is_alive()
+    assert len(errors) == 1 and isinstance(errors[0], navigation.ComputeError)
+    assert str(errors[0]) == "navigation_configuration_changed"
+    assert instance.lease is admitted_lease
+    assert instance.run_id == admitted_run
+    assert instance.policy["mode"] == "drive"
+    assert instance.operator_lifecycle.journey_id == "new-mission"
+    assert all(command["action"] == "stop" for command in isolated[-1])
+
+
+def test_inherited_verified_flag_cannot_bypass_running_observer_guard(world):
+    old = navigation_config.snapshot()
+    accepted = acceptance(old)
+    values = {k: v for k, v in accepted.items() if k not in {"protocol_version", "revision"}}
+    saved = navigation_config.configure({"revision": old["revision"], "values": values})
+    world.manager._state_path.write_text(json.dumps({"requested": ["s15_venom_perception"]}))
+    with pytest.raises(ValueError, match="stop_goals_first"):
+        navigation_config.configure(
+            {
+                "revision": saved["revision"],
+                "values": {"model_sha256": "b" * 64, "calibration_id": "different-acceptance"},
+            }
+        )
+    assert navigation_config.snapshot() == saved
+    assert world.commands == world.actions == []

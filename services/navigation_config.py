@@ -285,7 +285,7 @@ def configure_locked(body):
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         from services.navigation_approval import approval_only
 
-        approving = approval_only(old, proposed)
+        approving = body["values"].get("verified") is True and approval_only(old, proposed)
         if approving:
             _require_navigation_goals_stopped(approval_revision=old["revision"])
         else:

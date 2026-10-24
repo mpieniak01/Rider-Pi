@@ -530,11 +530,12 @@ class NavigationRunner(NavigationCycle):
         if current_policy != self.saved_policy:
             from services.navigation_approval import approval_only
 
-            if self.policy["mode"] != "observe" or not approval_only(self.saved_policy, current_policy):
-                raise ComputeError("navigation_configuration_changed")
-            # Approval changes no model, ROI, thresholds or motion parameters.
-            # Keep source/transport alive but retire every old decision identity.
+            # Check and adopt under the authority mutex: a fresh journey may
+            # have rebound while this cycle was waiting to enter the transition.
             with self.operator_lifecycle.lock:
+                if self.policy["mode"] != "observe" or not approval_only(self.saved_policy, current_policy):
+                    raise ComputeError("navigation_configuration_changed")
+                # Keep source/transport, but retire every old decision identity.
                 self.saved_policy = current_policy
                 self.operator_lifecycle._reset_lease(
                     {"generation": self.generation, "last_seq": self.motion_sequence}, authorized=False
