@@ -63,3 +63,27 @@ def test_policy_fields_are_not_accepted_as_visual_settings(values):
     values["verified"] = True
     with pytest.raises(ValueError, match="image_reference_invalid"):
         ref.configure({"revision": 0, "values": values})
+
+
+@pytest.mark.parametrize(
+    "stored", [[], 3, {"version": True, "revision": 1, "values": {}, "purpose": "visual_reference_only"}]
+)
+def test_invalid_local_file_is_not_presented_as_calibration(values, stored):
+    ref.path().write_text(json.dumps(stored))
+    with pytest.raises(ValueError, match="image_reference_invalid"):
+        ref.snapshot()
+
+
+def test_http_handler_reports_cas_and_validation_without_motion(values):
+    from flask import Flask
+
+    from services.api_core.navigation_api import image_reference_handler
+
+    app = Flask(__name__)
+    app.add_url_rule("/api/navigation/image-reference", view_func=image_reference_handler, methods=["GET", "POST"])
+    client = app.test_client()
+    assert client.get("/api/navigation/image-reference").json["values"] is None
+    saved = client.post("/api/navigation/image-reference", json={"revision": 0, "values": values})
+    assert saved.status_code == 200 and saved.json["purpose"] == "visual_reference_only"
+    assert client.post("/api/navigation/image-reference", json={"revision": 0, "values": values}).status_code == 409
+    assert client.post("/api/navigation/image-reference", json={"revision": True, "values": values}).status_code == 422

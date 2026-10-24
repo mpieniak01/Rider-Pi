@@ -87,7 +87,9 @@ def snapshot():
         raise ValueError("image_reference_invalid")
     state = json.loads(target.read_text())
     if (
-        set(state) != {"version", "revision", "values", "purpose"}
+        not isinstance(state, dict)
+        or set(state) != {"version", "revision", "values", "purpose"}
+        or type(state["version"]) is not int
         or state["version"] != 1
         or type(state["revision"]) is not int
         or state["revision"] < 0
