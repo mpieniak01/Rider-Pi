@@ -5,9 +5,20 @@ import { profileText as t } from './navigation-profile-messages.js';
 const ids = ['legacy', 'cautious', 'balanced', 'fluid'];
 const legacy = { version: 1, profile_id: 'legacy', profile_revision: 1 };
 function selection(value) {
-  return value?.version === 1 && ids.includes(value.profile_id)
-    && Number.isSafeInteger(value.profile_revision) && value.profile_revision > 0
-    ? { version: 1, profile_id: value.profile_id, profile_revision: value.profile_revision } : null;
+  if (value?.version !== 1 || !ids.includes(value.profile_id) || !Number.isSafeInteger(value.profile_revision) || value.profile_revision < 1) return null;
+  const overrides = value.overrides;
+  if (overrides !== undefined && (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)
+    || Object.values(overrides).some(item => typeof item !== 'boolean' && (typeof item !== 'number' || !Number.isFinite(item))))) return null;
+  return { version: 1, profile_id: value.profile_id, profile_revision: value.profile_revision,
+    ...(overrides && Object.keys(overrides).length ? { overrides: { ...overrides } } : {}) };
+}
+function sameSelection(a, b) {
+  return a.profile_id === b.profile_id && a.profile_revision === b.profile_revision
+    && JSON.stringify(Object.entries(a.overrides || {}).sort()) === JSON.stringify(Object.entries(b.overrides || {}).sort());
+}
+function profileLabel(value) {
+  const label = t('behavior.profile.' + value.profile_id);
+  return value.overrides ? t('behavior.custom', { profile: label }) : label;
 }
 export function profileCatalog(policy) {
   const raw = policy?.behavior_catalog, active = selection(raw?.active) || selection(policy?.behavior) || legacy;
@@ -22,7 +33,9 @@ export function profileCatalog(policy) {
       || profiles.some(item => item.id === row.id)) return fallback;
     profiles.push(row);
   }
-  if (!profiles.some(row => row.id === active.profile_id && row.profile_revision === active.profile_revision)) return fallback;
+  if (active.overrides && raw.parameter_editing_version !== 1) return fallback;
+  if (!profiles.some(row => row.id === active.profile_id && (row.profile_revision === active.profile_revision
+    || raw.parameter_editing_version === 1 && active.profile_revision === 1 && row.profile_revision === 2))) return fallback;
   return { ...raw, profiles, active };
 }
 function errorKey(error) {
@@ -104,18 +117,18 @@ export class NavigationProfiles {
       }
       select.disabled = !catalog.supported || this.busy;
     }
-    text('navigation-profile-current', t('behavior.current', { profile: t('behavior.profile.' + catalog.active.profile_id), revision: this.policy?.revision ?? '—' }));
+    text('navigation-profile-current', t('behavior.current', { profile: profileLabel(catalog.active), revision: this.policy?.revision ?? '—' }));
     text('navigation-profile-draft', this.draft ? t('behavior.draft', { profile: t('behavior.profile.' + selected) }) : '');
     text('navigation-profile-description', t('behavior.description.' + selected));
     text('navigation-profile-provider-hint', this.pipeline?.profile?.analysis_location === 'local'
       ? t('behavior.localOnly', { model: this.pipeline.profile.local_engine || '—' }) : '');
     text('navigation-profile-experimental', row?.status === 'experimental' ? t('behavior.experimentalHint') : '');
-    text('navigation-profile-parameters', catalog.supported ? JSON.stringify(row?.parameters || {}, null, 2) : '');
+    text('navigation-profile-parameters', catalog.supported ? JSON.stringify(!this.draft && catalog.active_parameters ? catalog.active_parameters : row?.parameters || {}, null, 2) : '');
     text('navigation-profile-hash', catalog.supported ? t('behavior.effectiveHash') + ': ' + catalog.effective_policy_sha256 : '');
     const block = this.blocked();
     text('navigation-profile-message', this.error || block ? t(this.error || block, { model: this.pipeline?.profile?.local_engine || '—' }) : this.saved === this.policy?.revision ? t('behavior.saved', { revision: this.saved }) : '');
     const apply = document.getElementById('navigation-profile-apply'), refresh = document.getElementById('navigation-profile-refresh');
-    const changed = this.draft && (selected !== catalog.active.profile_id || this.draft.selection.profile_revision !== catalog.active.profile_revision);
+    const changed = this.draft && !sameSelection(this.draft.selection, catalog.active);
     if (apply) { apply.textContent = t(this.busy ? 'behavior.saving' : 'behavior.apply'); apply.title = t('behavior.applyHint'); apply.disabled = !changed || !!block; }
     if (refresh) { refresh.textContent = t(this.draft ? 'behavior.discard' : 'behavior.refresh'); refresh.disabled = this.busy; }
     this.renderTemporal();
@@ -133,7 +146,7 @@ export class NavigationProfiles {
       t('temporal.raw') + ': ' + (decision.raw_state || '—'),
       t('temporal.stabilized') + ': ' + (temporal.state || '—'),
       t('temporal.risk') + ': ' + (temporal.risk || '—') + ' / ' + temporal.action,
-      t('behavior.title') + ': ' + (profile ? t('behavior.profile.' + profile.profile_id) + ' · r' + profile.profile_revision : '—'),
+      t('behavior.title') + ': ' + (profile ? profileLabel(profile) + ' · r' + profile.profile_revision : '—'),
       t('temporal.reason') + ': ' + (temporal.reason ? (reason === reasonKey ? temporal.reason : reason) : t('temporal.noReason')),
       t('temporal.evidence') + ': ' + (temporal.evidence_frames ?? '—'),
       t('temporal.near') + ': ' + t(typeof temporal.near_guard_clear !== 'boolean' ? 'temporal.unknown' : temporal.near_guard_clear ? 'temporal.yes' : 'temporal.no'),
@@ -150,7 +163,7 @@ export class NavigationProfiles {
     const block = this.blocked();
     if (!this.draft || block) { if (block) { this.error = block; this.render(); } return; }
     const draft = this.draft, active = profileCatalog(this.policy).active;
-    if (draft.selection.profile_id === active.profile_id && draft.selection.profile_revision === active.profile_revision) return;
+    if (sameSelection(draft.selection, active)) return;
     this.busy = true; this.epoch++; this.error = ''; this.saved = null; this.render();
     try {
       const response = await request('/api/navigation/config', { method: 'POST', body: {
