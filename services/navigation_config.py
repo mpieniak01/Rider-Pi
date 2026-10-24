@@ -237,7 +237,7 @@ def configure(body):
         return configure_locked(body)
 
 
-def _require_navigation_goals_stopped():
+def _require_navigation_goals_stopped(*, approval_revision=None):
     state_path = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
     if state_path.exists():
         try:
@@ -248,7 +248,13 @@ def _require_navigation_goals_stopped():
                 raise ValueError("invalid")
         except (ValueError, OSError, AttributeError) as exc:
             raise ValueError("navigation_goal_state_unavailable") from exc
-        if set(requested) & {"s14_venom_navigation", "s15_venom_perception"}:
+        navigation_goals = set(requested) & {"s14_venom_navigation", "s15_venom_perception"}
+        if navigation_goals and approval_revision is not None:
+            from services.navigation_approval import passive_navigation_matches
+
+            if "s14_venom_navigation" not in navigation_goals or passive_navigation_matches(approval_revision):
+                return
+        if navigation_goals:
             raise ValueError("navigation_stop_goals_first")
 
 
@@ -276,10 +282,13 @@ def configure_locked(body):
             raise ValueError("navigation_configuration_conflict")
         # Mode switches do not change compute selection or model parameters.
         # Unrelated voice/compute consumers can continue using their own policy.
-        if set(body["values"]) != {"mode"}:
-            _require_idle_goals()
-        _require_navigation_goals_stopped()
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
+        from services.navigation_approval import approval_only
+
+        approving = approval_only(old, proposed)
+        if not approving and set(body["values"]) != {"mode"}:
+            _require_idle_goals()
+        _require_navigation_goals_stopped(approval_revision=old["revision"] if approving else None)
         # Model identities are committed by the host-coordinated endpoint only.
         proposed_perception = proposed.get("perception")
         _validated_perception(proposed_perception)

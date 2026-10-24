@@ -21,6 +21,7 @@ def _present_config(config):
         **config,
         "behavior_catalog": behavior,
         "model_tuning_supported": True,
+        "approval_without_restart_version": 1,
         "perception_tuning": presentation(config),
     }
 

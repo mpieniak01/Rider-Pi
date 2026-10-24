@@ -310,7 +310,7 @@ class NavigationRunner(NavigationCycle):
         safety = read_status()
         if safety.get("owner") != "navigation" or safety.get("generation") != generation:
             return
-        _, code = submit_control(
+        result, code = submit_control(
             {
                 "action": "stop",
                 "source": "navigation",
@@ -321,7 +321,19 @@ class NavigationRunner(NavigationCycle):
             }
         )
         if code not in {200, 202}:
-            self.closed.set()
+            # STOP may have lost a race to a confirmed revocation/new owner.
+            # Never retry against that newer generation or kill its passive image.
+            current = read_status() if code == 409 and result.get("error") == "stale_stop_generation" else {}
+            superseded = (
+                current.get("ready") is True
+                and current.get("stale") is False
+                and current.get("state") in {"ARMED", "DISARMED", "ESTOP"}
+                and isinstance(current.get("generation"), str)
+                and bool(current["generation"])
+                and current["generation"] != generation
+            )
+            if not superseded:
+                self.closed.set()
 
     def _request(self, meta, payload, mime):
         prepared_at = self.clock()
@@ -511,8 +523,23 @@ class NavigationRunner(NavigationCycle):
         self.cycle_started = self.clock()
         self.cycle_timings_ms = {}
         configuration_started = self.clock()
-        if navigation_config.snapshot() != self.saved_policy or selected_executor() != self.selection:
+        current_policy = navigation_config.snapshot()
+        if selected_executor() != self.selection:
             raise ComputeError("navigation_configuration_changed")
+        if current_policy != self.saved_policy:
+            from services.navigation_approval import approval_only
+
+            if self.policy["mode"] != "observe" or not approval_only(self.saved_policy, current_policy):
+                raise ComputeError("navigation_configuration_changed")
+            # Approval changes no model, ROI, thresholds or motion parameters.
+            # Keep source/transport alive but retire every old decision identity.
+            with self.operator_lifecycle.lock:
+                self.saved_policy = current_policy
+                self.operator_lifecycle._reset_lease(
+                    {"generation": self.generation, "last_seq": self.motion_sequence}, authorized=False
+                )
+                self.last_result = None
+                self.fresh_frame_seen = False
         self.cycle_timings_ms["configuration_ms"] = round((self.clock() - configuration_started) * 1000, 2)
         if self.operator_lifecycle.enabled:
             self._timed("authority_ms", self._authority)

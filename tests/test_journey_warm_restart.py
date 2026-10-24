@@ -190,3 +190,22 @@ def test_host_update_required_during_warm_probe_remains_fatal(journey, monkeypat
         starter.start(body)
     assert not any(action == "stop" for _, action in world.actions)
     assert not any(row["action"] == "arm" for row in world.commands)
+
+
+def test_approval_adoption_finishes_before_warm_reuse_without_stopping_healthy_source(journey, monkeypatch):
+    world, starter, body = prepare_warm(journey, monkeypatch)
+    revision = navigation_config.snapshot()["revision"]
+    original = starter.status
+
+    def adopting():
+        row = original()
+        if world.elapsed < 0.1 and row.get("mode") == "observe":
+            return {**row, "config_revision": revision - 1, "warm_ready": False}
+        return row
+
+    starter.status = adopting
+    result = starter.start(body)
+    assert result["preparation"]["warm_reused"] is True
+    assert not any(action == "stop" for _, action in world.actions)
+    assert not any("venom-navigation.service" in unit for unit, _ in world.actions)
+    assert len([row for row in world.commands if row["action"] == "arm"]) == 1
