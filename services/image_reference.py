@@ -27,7 +27,7 @@ def path():
 
 
 def number(value, low, high):
-    return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+    return type(value) in (int, float) and low <= value <= high and math.isfinite(value)
 
 
 def validate(values):

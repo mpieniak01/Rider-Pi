@@ -280,9 +280,9 @@
     "Reagiert vorsichtiger auf unsichere Bilder und warnt früher vor möglichen Hindernissen."
   ],
   "behavior.description.balanced": [
-    "Łączy potwierdzanie przeszkód w kolejnych obrazach z płynną reakcją na krótkie błędy rozpoznawania.",
-    "Combines confirmation across images with a smooth response to brief recognition errors.",
-    "Verbindet die Bestätigung über mehrere Bilder mit einer ruhigen Reaktion auf kurze Erkennungsfehler."
+    "Umiarkowanie reaguje na niepewny obraz i łagodzi reakcję na krótkie błędy rozpoznawania.",
+    "Responds moderately to uncertain images and tolerates brief recognition errors.",
+    "Reagiert gemäßigt auf unsichere Bilder und toleriert kurze Erkennungsfehler."
   ],
   "behavior.description.fluid": [
     "Łagodzi reakcję na krótkie błędy rozpoznawania, gdy droga tuż przed robotem jest potwierdzona jako wolna.",

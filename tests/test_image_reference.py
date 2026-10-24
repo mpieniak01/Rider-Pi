@@ -41,6 +41,8 @@ def test_persist_cas_and_restore_without_navigation_policy(values, tmp_path):
     "key,value",
     [
         ("track_width_cm", True),
+        ("track_width_cm", 10**400),
+        ("camera_height_cm", -(10**400)),
         ("camera_height_cm", float("nan")),
         ("robot_width_cm", 17),
         ("frame_size", [0, 240]),
@@ -85,6 +87,10 @@ def test_http_handler_reports_cas_and_validation_without_motion(values):
     assert client.get("/api/navigation/image-reference").json["values"] is None
     saved = client.post("/api/navigation/image-reference", json={"revision": 0, "values": values})
     assert saved.status_code == 200 and saved.json["purpose"] == "visual_reference_only"
+    oversized = {**values, "track_width_cm": 10**400}
+    rejected = client.post("/api/navigation/image-reference", json={"revision": 1, "values": oversized})
+    assert rejected.status_code == 422
+    assert ref.snapshot()["values"] == values
     assert client.post("/api/navigation/image-reference", json={"revision": 0, "values": values}).status_code == 409
     assert client.post("/api/navigation/image-reference", json={"revision": True, "values": values}).status_code == 422
 
