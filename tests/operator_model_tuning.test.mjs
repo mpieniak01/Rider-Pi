@@ -72,7 +72,7 @@ test('custom bounds and empty numeric inputs cannot be persisted; inheritance re
   const f = await fixture(); await f.panel.load(); f.change('model-tuning-mode-min_region_fraction', 'custom');
   f.change('model-tuning-min_region_fraction', '.03', 'input'); await f.panel.apply();
   assert.equal(f.calls.some(row => row.method === 'POST'), false);
-  assert.match(f.node('model-tuning-message').textContent, /finite values/);
+  assert.match(f.node('model-tuning-message').textContent, /Enter numbers within the shown ranges/);
   f.change('model-tuning-min_region_fraction', '', 'input'); await f.panel.apply();
   assert.equal(f.calls.some(row => row.method === 'POST'), false);
   f.change('model-tuning-mode-min_region_fraction', 'inherit'); f.change('model-tuning-surface', 'floor_rug'); await f.panel.apply();
