@@ -87,3 +87,25 @@ def test_http_handler_reports_cas_and_validation_without_motion(values):
     assert saved.status_code == 200 and saved.json["purpose"] == "visual_reference_only"
     assert client.post("/api/navigation/image-reference", json={"revision": 0, "values": values}).status_code == 409
     assert client.post("/api/navigation/image-reference", json={"revision": True, "values": values}).status_code == 422
+
+
+def test_negotiated_save_confirms_persistence_and_readback(values):
+    from flask import Flask
+
+    from services.api_core.http_contract import install
+    from services.api_core.navigation_api import image_reference_handler
+
+    app = Flask(__name__)
+    app.add_url_rule("/api/navigation/image-reference", view_func=image_reference_handler, methods=["GET", "POST"])
+    install(app, after_request=True)
+    client = app.test_client()
+    headers = {"Accept": "application/vnd.rider.api+json;version=1"}
+    saved = client.post("/api/navigation/image-reference", json={"revision": 0, "values": values}, headers=headers)
+    assert saved.status_code == 200 and saved.json["ok"] is True
+    assert saved.json["meta"]["contract_id"] == "rider.navigation_loop"
+    assert saved.json["operation"]["ack_kind"] == "configuration_persisted"
+    assert saved.json["operation"]["actuation"] is False
+    restored = client.get("/api/navigation/image-reference", headers=headers)
+    assert restored.json["data"] == saved.json["data"] == ref.snapshot()
+    conflict = client.post("/api/navigation/image-reference", json={"revision": 0, "values": values}, headers=headers)
+    assert conflict.status_code == 409 and conflict.json["ok"] is False
