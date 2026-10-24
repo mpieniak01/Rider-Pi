@@ -79,3 +79,20 @@ Model identity migration remains separate.
 
 
 [Per-model settings and operator placement / Ustawienia modeli i położenie w panelu](perception-models.md).
+
+## Image acceptance without restarting observation
+
+The configuration API advertises `approval_without_restart_version: 1`.
+Image and swept-outline acceptance may update approval metadata and revision
+while observation remains active. Model, profile, geometry, speed and deadline
+parameters must stay identical. S14 additionally requires a fresh confirmed
+observation state with no active navigation journey.
+
+The observer adopts this revision without closing its source or transport,
+assigns a new analysis identity and discards previous decisions. Saving does
+not arm movement. A new journey still requires explicit Start and three newly
+qualified frames. Other policy changes retain the stopped-goals contract.
+
+A rejected scoped STOP for an old generation does not close passive observation
+when fresh executor state confirms a different generation. STOP is never retried
+against the new owner. Missing confirmation remains an error.

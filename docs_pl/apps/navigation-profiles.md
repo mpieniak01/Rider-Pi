@@ -78,3 +78,20 @@ Migracja pól tożsamości modelu jest osobna.
 
 
 [Per-model settings and operator placement / Ustawienia modeli i położenie w panelu](perception-models.md).
+
+## Potwierdzenie obrazu bez restartu obserwacji
+
+API konfiguracji udostępnia `approval_without_restart_version: 1`.
+Samo potwierdzenie obrazu i obrysu może zmienić dane odbioru oraz rewizję,
+zachowując aktywną obserwację. Parametry modelu, profilu, geometrii, prędkości
+i terminów ważności muszą pozostać identyczne. S14 wymaga przy tym
+potwierdzonego, świeżego trybu obserwacji bez aktywnej podróży.
+
+Obserwator przyjmuje taką rewizję bez zamykania źródła i transportu, nadaje nowy
+identyfikator analizy i usuwa poprzednie decyzje. Zapis nie uzbraja ruchu.
+Nowa podróż nadal wymaga jawnego Start oraz nowej kwalifikacji trzech klatek.
+Inne zmiany konfiguracji zachowują dotychczasowy kontrakt zatrzymania celów.
+
+Odmowa scoped STOP ze starą generacją nie kończy pasywnego podglądu, jeżeli
+świeży stan wykonawcy potwierdza już inną generację. Nie ponawiamy STOP wobec
+nowego właściciela. Brak takiego potwierdzenia pozostaje błędem.

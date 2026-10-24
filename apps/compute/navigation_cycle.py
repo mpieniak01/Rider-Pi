@@ -172,7 +172,7 @@ class NavigationCycle:
         }
 
     def _retry_capture_budget(self, error, meta):
-        if self.policy["mode"] != "drive" or self.lease.journey is None:
+        if self.policy["mode"] != "drive":
             return False
         transient = isinstance(error, CaptureBudgetExpired)
         if isinstance(error, urllib.error.HTTPError):
@@ -186,12 +186,31 @@ class NavigationCycle:
         if not transient:
             return False
         lease = self.lease
-        return (
-            self._authority()
-            and self.run_id == meta.get("run_id")
-            and self.lease is lease
-            and lease.await_fresh_capture()
-        )
+        if not self._authority() or self.run_id != meta.get("run_id") or self.lease is not lease:
+            return False
+        if self._retry_startup_capture(lease):
+            return True
+        return lease.journey is not None and lease.await_fresh_capture()
+
+    def _retry_startup_capture(self, lease):
+        # Before the first permit there is no feedback window to wait inside.
+        # Keep the existing startup clock and authority, never renew either.
+        with self.operator_lifecycle.lock:
+            if (
+                self.lease is not lease
+                or lease.latched
+                or self.closed.is_set()
+                or lease.deadline is not None
+                or lease.feedback_deadline is not None
+                or not self._startup_retry()
+            ):
+                return False
+            if self.operator_lifecycle.qualification is not None:
+                # Evidence before a failed capture is not a consecutive series.
+                # Preserve anti-replay identities while requiring three new frames.
+                self.operator_lifecycle.qualification.count = 0
+                self.operator_lifecycle.qualified = False
+            return True
 
     def _apply_decision(self, decision, meta, captured):
         frame_id = meta["frame_id"]

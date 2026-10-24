@@ -17,10 +17,17 @@ def _present_config(config):
         eligible, reason = False, "camera_pipeline_config_unavailable"
     behavior = catalog(config.get("behavior"), config.get("perception"))
     behavior.update(execution_eligible=eligible, reason=reason)
+    from services.navigation_trial import navigation_status
+
+    runner = navigation_status()
+    continuous_approval = runner.get("running") is not True or (
+        type(runner.get("approval_without_restart_version")) is int and runner["approval_without_restart_version"] == 1
+    )
     return {
         **config,
         "behavior_catalog": behavior,
         "model_tuning_supported": True,
+        "approval_without_restart_version": 1 if continuous_approval else 0,
         "perception_tuning": presentation(config),
     }
 

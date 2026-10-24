@@ -254,6 +254,21 @@ class TrialPreparation:
 
     def _warm_source_ready(self):
         row = self.status()
+        # Approval-only persistence does not restart a passive runner. Let its
+        # current bounded cycle adopt the new revision before deciding to replace
+        # that healthy source. This wait never grants ARM or extends preparation.
+        until = min(self.context["deadline"], self.clock() + 1.0)
+        while (
+            row.get("warm_navigation_version") == 1
+            and row.get("running") is True
+            and row.get("mode") == "observe"
+            and row.get("config_revision") == self.context["revision"] - 1
+            and self.clock() < until
+        ):
+            self.guard()
+            self.sleep(min(0.05, max(0, until - self.clock())))
+            row = self.status()
+        self.guard()
         sampled = row.get("sampled_monotonic")
         if not (
             row.get("warm_navigation_version") == 1

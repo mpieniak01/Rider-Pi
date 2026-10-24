@@ -93,3 +93,20 @@ zweryfikować znak yaw, obrys, faktyczny ruch i hamowanie oraz ocenić błędne
 GO/STOP, migotanie, pomyłki stron i opóźnienia. Słabe historyczne pudełko pozostaje
 próbką negatywną, bez wymuszania progów ani twierdzenia o fizycznie wolnym torze.
 Ograniczeniami pozostają błędy głębi monokularnej i niewidoczne boki/tył.
+
+
+### Odzyskiwanie pierwszej klatki podczas kwalifikacji
+
+Przed pierwszym zezwoleniem na ruch ogranicznik HTTP może odrzucić pojedynczą
+klatkę jako przeterminowaną. Dla CaptureBudgetExpired i rozpoznanych odpowiedzi
+vision_frame_expired, stream_frame_unavailable lub vision_busy wykonawca pobiera
+nową klatkę w istniejącym pięciosekundowym oknie startu. Nie ponawia tego samego
+POST ani nie przesuwa terminu startu, zgody operatora lub uprawnień wykonawcy.
+
+Po takim odrzuceniu kwalifikacja wymaga trzech nowych poprawnych klatek.
+STOP, utrata właściciela/generacji, zamknięcie pętli i błędy tożsamości pozostają
+końcowe. Gdy istnieje już zezwolenie lub okno informacji zwrotnej, obowiązują
+jego pierwotne terminy; ścieżka startowa nie omija tego ograniczenia.
+
+Regresję pierwszej klatki i brak odnowienia uprawnień sprawdza
+tests/test_navigation_startup_capture.py na odizolowanych atrapach.
