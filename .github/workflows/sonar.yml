@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   sonar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       PYTHONPATH: .
@@ -30,16 +30,16 @@ jobs:
       BUS_PUB_ADDR: 'inproc://rider-sonar-publish'
       BUS_SUB_ADDR: 'inproc://rider-sonar-subscribe'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1, Node 24
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0, Node 24
         with:
           python-version: '3.9'
           cache: pip
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0, Node 24
         with:
           node-version: '22.18.0'
       - name: Install isolated software-test dependencies
@@ -85,7 +85,7 @@ jobs:
           docker run --rm --network=host --user "$(id -u):$(id -g)"             --env SONAR_TOKEN --env SONAR_HOST_URL=https://sonarcloud.io --env SONAR_USER_HOME=/tmp/rider-ci-sonar-home --env SCANNER_WORKDIR_PATH=/tmp/rider-ci-scanner             --volume "$PWD:/usr/src:ro" --workdir /usr/src             sonarsource/sonar-scanner-cli@sha256:a3f4215076706c95a17a68c19322ee916e40a3acd081a8c1a1e839e0194afa57 "${args[@]}"
       - name: Keep reproducible coverage reports
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0, Node 24
         with:
           name: sonar-coverage-${{ github.event.pull_request.head.sha || github.sha }}
           path: docs_pl/_done/ci-sonar/

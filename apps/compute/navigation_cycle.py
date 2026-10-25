@@ -108,6 +108,7 @@ class NavigationCycle:
 
     def _request_decision(self, meta, frame, captured):
         request_started = self.clock()
+        requested_lease, requested_generation = self.lease, self.generation
         self.request_roundtrip_ms = self.response_age_ms = None
         self.request_attempt = {
             "run_id": meta.get("run_id"),
@@ -119,7 +120,10 @@ class NavigationCycle:
         try:
             decision = self.request(meta, frame["data"], frame["content_type"])
         except Exception as exc:
+            failed_at = time.time()
             self._finish_request("failed", type(exc).__name__)
+            if self._operator_stopped_request(exc, meta, failed_at, requested_lease, requested_generation):
+                return False, None
             bounded_retry = self._retry_capture_budget(exc, meta)
             network_error = isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
             if not bounded_retry and (not network_error or not self._retry_observation(exc)):
@@ -132,6 +136,17 @@ class NavigationCycle:
         self._check_model_reply(decision, meta)
         self.last_result = decision
         return True, decision
+
+    def _operator_stopped_request(self, error, meta, failed_at, lease, generation):
+        if not isinstance(error, urllib.error.HTTPError) or error.code != 409:
+            return False
+        from .stream_prepare import http_error_code
+
+        if http_error_code(error) != "stale_device_session":
+            return False
+        from .navigation import read_status
+
+        return self.operator_lifecycle.retire_stopped_request(meta, read_status(), failed_at, lease, generation)
 
     def _record_retry_result(self, error, meta, frame, bounded_retry):
         detail = {}

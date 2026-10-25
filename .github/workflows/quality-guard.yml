@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # ✅ domyślne wartości; później podmieniamy przez $GITHUB_ENV
     env:
@@ -19,13 +19,13 @@ jobs:
       PYTHONPATH: .
 
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1, Node 24
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Setup Python (3.9 jak na urządzeniu)
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0, Node 24
         with:
           python-version: '3.9'
 
@@ -159,7 +159,7 @@ jobs:
           set -euo pipefail
           pytest tests/test_features_api.py -q
 
-      # Dormant: this job uses ubuntu-latest. Do not apply scenario-suite until
+      # Dormant: this job uses ubuntu-24.04. Do not apply scenario-suite until
       # a separate, explicitly authorized self-hosted runner setup is available.
       - name: Scenario suite (S3–S11) — unavailable until self-hosted runner setup
         if: ${{ env.RUN_SCENARIO_SUITE == '1' }}
