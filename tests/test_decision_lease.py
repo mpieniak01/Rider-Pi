@@ -407,3 +407,32 @@ def test_zero_submission_failure_remains_terminal():
     assert lease.latched
     assert output.revoked
     assert lease.reason == "motion_submission_failed"
+
+
+@pytest.mark.parametrize("duration", [190, 250])
+def test_extended_navigation_pulse_policy_accepts_without_changing_defaults(duration):
+    from copy import deepcopy
+
+    policy = deepcopy(DEFAULT)
+    policy.update(max_motion_ms=duration)
+    policy["perception"]["engine"] = "depth_plane"
+    policy["avoidance"]["enabled"] = True
+    assert validate(policy)["max_motion_ms"] == duration
+    assert DEFAULT["max_motion_ms"] == 150
+    with pytest.raises(ValueError, match="navigation_duration_invalid"):
+        validate({**policy, "max_motion_ms": 251})
+
+
+@pytest.mark.parametrize(
+    "limit,valid_ms,age,expected", [(190, 200, 0, 0.19), (250, 200, 0, 0.2), (250, 150, 0, 0.15), (250, 200, 0.2, 0.1)]
+)
+def test_extended_pulse_never_exceeds_reply_or_capture_deadline(limit, valid_ms, age, expected):
+    lease, now, calls = make()
+    lease.config["max_motion_ms"] = limit
+    now[0] = age
+    assert lease.accept(decision(valid_for_ms=valid_ms), "f1", 1, 0)
+    assert calls[-1][2] == pytest.approx(expected)
+    now[0] = lease.deadline + 0.001
+    assert not lease.tick()
+    assert calls[-1] == ("stop",)
+    assert not lease.accept(decision(2, valid_for_ms=valid_ms), "f2", 2, now[0])

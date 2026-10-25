@@ -28,6 +28,7 @@ def _present_config(config):
         **config,
         "behavior_catalog": behavior,
         "model_tuning_supported": True,
+        "motion_limits": {"version": 1, "max_motion_ms": navigation_config.MAX_MOTION_MS},
         "input_region_version": 1,
         "approval_without_restart_version": 1 if continuous_approval else 0,
         "perception_tuning": presentation(config),
