@@ -248,6 +248,7 @@ class TrialPreparation:
             **({"journey_version": 1} if self.is_journey else {}),
             **({"temporal_version": 1} if config.get("behavior", {}).get("profile_id", "legacy") != "legacy" else {}),
             **({"model_tuning_version": 1} if config.get("perception", {}).get("semantic_models") else {}),
+            **({"input_region_version": 1} if config.get("perception", {}).get("input_region") else {}),
         )
         self.guard()
         return config
