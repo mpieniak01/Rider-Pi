@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import threading
+import time
 import uuid
 
 from apps.compute.client import ComputeError
@@ -118,6 +120,77 @@ class OperatorLifecycle:
         self._end_journey(
             reason if own_terminal and isinstance(reason, str) and reason else "navigation_authority_lost"
         )
+
+    def retire_stopped_request(self, meta, safety, failed_at, lease, generation):
+        """A prior confirmed operator STOP wins over its cancelled host request."""
+        now = time.time()
+
+        def fresh_stamp(value):
+            return type(value) in (int, float) and math.isfinite(value) and 0 < value <= now and now - value <= 3.0
+
+        reported = safety.get("journey") or {}
+        current_generation = safety.get("generation")
+        observed = safety.get("observed_at")
+        if not (
+            self.enabled
+            and fresh_stamp(failed_at)
+            and fresh_stamp(observed)
+            and safety.get("ready") is True
+            and safety.get("stale") is False
+            and safety.get("state") == "DISARMED"
+            and safety.get("can_move") is False
+            and safety.get("moving") is False
+            and safety.get("owner") is None
+            and safety.get("reason") == "operator_stop"
+            and reported.get("active") is False
+            and reported.get("state") == "stopped"
+            and reported.get("reason") == "operator_stop"
+            and type(reported.get("version")) is int
+            and reported["version"] == 1
+            and isinstance(current_generation, str)
+            and current_generation
+            and current_generation != generation
+        ):
+            return False
+        acknowledgements = safety.get("recent_acks")
+        if not isinstance(acknowledgements, list):
+            return False
+        confirmed = any(
+            isinstance(ack, dict)
+            and ack.get("accepted") is True
+            and ack.get("source") == "manual"
+            and ack.get("action") == "stop"
+            and ack.get("status") == "executed"
+            and ack.get("reason") == "stopped"
+            and ack.get("generation") == current_generation
+            and fresh_stamp(ack.get("observed_at"))
+            and ack["observed_at"] <= failed_at
+            and ack["observed_at"] <= observed
+            for ack in acknowledgements
+        )
+        if not confirmed:
+            return False
+        with self.lock:
+            runner = self.runner
+            journey = lease.journey
+            if (
+                runner.lease is not lease
+                or runner.run_id != meta.get("run_id")
+                or runner.generation != generation
+                or runner.policy["mode"] != "drive"
+                or runner.input_failure is not None
+                or runner.motion_failure is not None
+                or lease.latched
+                or journey is None
+                or not journey.active
+                or journey.context != meta.get("journey")
+                or self.journey_id != reported.get("id")
+                or journey.context["id"] != reported.get("id")
+            ):
+                return False
+            # No request retry, permit renewal, rearm or motion submission.
+            self._end_journey("operator_stop")
+            return True
 
     def _restart_authority(self, safety, authorized):
         if self.last_journey is None or self.journey_id is not None or self.authorized or not authorized:
