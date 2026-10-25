@@ -2,7 +2,7 @@ import { request, poll } from './transport.js';
 import { text, showError } from './ui.js';
 import { profileText as t } from './navigation-profile-messages.js';
 
-const ids = ['legacy', 'cautious', 'balanced', 'fluid'];
+const ids = ['legacy', 'cautious', 'balanced', 'fluid', 'room_fluid'];
 const legacy = { version: 1, profile_id: 'legacy', profile_revision: 1 };
 function selection(value) {
   if (value?.version !== 1 || !ids.includes(value.profile_id) || !Number.isSafeInteger(value.profile_revision) || value.profile_revision < 1) return null;

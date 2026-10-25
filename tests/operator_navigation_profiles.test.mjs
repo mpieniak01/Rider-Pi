@@ -60,7 +60,7 @@ test('new profile widget makes no mutation on construction, loading or refresh',
 });
 test('missing capability explains all disabled choices without granting an unavailable profile', async () => {
   const f = await fixture({ supported: false }); await f.panel.load();
-  assert.equal(f.node('navigation-profile').children.length, 4);
+  assert.equal(f.node('navigation-profile').children.length, 5);
   assert.equal(f.node('navigation-profile').disabled, true);
   f.choose('fluid'); await f.panel.apply();
   assert.equal(f.calls.some(row => row.method === 'POST'), false);

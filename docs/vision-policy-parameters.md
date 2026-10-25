@@ -74,3 +74,12 @@ The matching controls reject implausible area changes, retain a bounded missed-d
 Open **Caution level → Profile parameters**, select a revision 2 preset, edit values and explicitly Apply. The current device revision and custom label remain visible. Restore preset removes corrections; Refresh discards an unsaved draft. Another panel's save invalidates an old draft rather than overwriting it. The selected-model thresholds remain in their existing model-tuning section.
 
 Calibration, known-room assumptions, transport freshness and physical acceptance remain independent from these adjustable interpretation values. No centimetre geometry is inferred from confidence or residual thresholds.
+
+
+## Fluid — known room
+
+The separate `room_fluid` r2 preset is selected explicitly and never migrates saved earlier presets. It enables whole-object assessment before route intersection and confirmation in 2 of 3 observations. The small-thin-region special threshold starts at 1.0 for the stated known-room/no-thin-obstacle assumption. Growth and downward movement may trigger an earlier STOP; stationary nearby obstacles still block the route. Clipped proposals must meet the ordinary in-route region criteria; a broad image-edge artifact with only a few intersecting pixels cannot gain whole-object significance.
+
+The Pi panel selects presets and displays parameters. The Venom panel provides model tuning and advanced numeric/object-history controls. Changes require stopped loops/motion and the correct device revision, invalidate driving acceptance and do not start cameras, models or motion. Earlier policy definitions and digests remain pinned.
+
+This is a local candidate awaiting manual acceptance before publication. Offline replay and mocked tests do not qualify physical driving.

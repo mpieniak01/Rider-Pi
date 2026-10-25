@@ -26,6 +26,7 @@ def _field(kind, low, high, step, group):
 
 
 SCHEMA = {
+    "object_policy_enabled": _field("bool", 0, 1, 1, "objects"),
     "pixel_confidence": _field("float", 0.05, 1.0, 0.01, "evidence"),
     "min_region_fraction": _field("float", 0.0, 0.02, 0.001, "evidence"),
     "thin_span_fraction": _field("float", 0.01, 1.0, 0.01, "evidence"),
@@ -80,6 +81,8 @@ def validate_overrides(value):
 
 
 def validate_effective(values):
+    if values.get("object_policy_enabled") and not values.get("object_tracking_enabled"):
+        raise ValueError("navigation_behavior_overrides_invalid")
     for name in ("enter_ms", "release_ms", "max_gap_ms", "max_uncertain_ms"):
         if values[name] > values["history_ms"]:
             raise ValueError("navigation_behavior_overrides_invalid")

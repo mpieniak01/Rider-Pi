@@ -5,7 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 
-from services.policy_parameters import NEW_DEFAULTS, SCHEMA, validate_effective, validate_overrides
+from services.policy_parameters import (
+    NEW_DEFAULTS,
+    SCHEMA,
+    validate_effective,
+    validate_overrides,
+)
 
 DEFAULT_BEHAVIOR = {"version": 1, "profile_id": "legacy", "profile_revision": 1}
 _BASE = {
@@ -53,6 +58,7 @@ _OVERRIDES = {
         "slow_speed_factor": 0.6,
     },
 }
+_OVERRIDES["room_fluid"] = dict(_OVERRIDES["fluid"])
 
 
 def validate_behavior(value):
@@ -69,10 +75,14 @@ def validate_behavior(value):
         or value["profile_id"] not in {"legacy", *_OVERRIDES}
         or value["profile_id"] == "legacy"
         and value["profile_revision"] != 1
+        or value["profile_id"] == "room_fluid"
+        and value["profile_revision"] != 2
     ):
         raise ValueError("navigation_behavior_invalid")
     corrections = validate_overrides(value.get("overrides", {}))
     if corrections and (value["profile_id"] == "legacy" or value["profile_revision"] != 2):
+        raise ValueError("navigation_behavior_overrides_invalid")
+    if "object_policy_enabled" in corrections and value["profile_id"] != "room_fluid":
         raise ValueError("navigation_behavior_overrides_invalid")
     result = dict(value)
     if corrections:
@@ -90,8 +100,14 @@ def _preset(behavior):
     values = {**_BASE, **_OVERRIDES[profile]}
     if behavior["profile_revision"] == 2:
         values.update(NEW_DEFAULTS)
-        if profile == "fluid":
+        if profile in {"fluid", "room_fluid"}:
             values["obstacle_support_frames"] = 2
+        if profile == "room_fluid":
+            values.update(
+                object_policy_enabled=True,
+                object_tracking_enabled=True,
+                thin_span_fraction=1.0,
+            )
     return values
 
 
@@ -146,7 +162,11 @@ def catalog(value=None, perception=None):
                 "profile_revision": 1 if name == "legacy" else 2,
                 "status": "legacy" if name == "legacy" else "experimental",
                 "parameters": parameters(
-                    {**DEFAULT_BEHAVIOR, "profile_id": name, "profile_revision": 1 if name == "legacy" else 2},
+                    {
+                        **DEFAULT_BEHAVIOR,
+                        "profile_id": name,
+                        "profile_revision": 1 if name == "legacy" else 2,
+                    },
                     perception,
                 ),
             }

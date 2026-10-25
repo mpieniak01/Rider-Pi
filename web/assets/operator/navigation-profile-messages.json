@@ -468,5 +468,15 @@
     "Własne ustawienia ({profile})",
     "Custom settings ({profile})",
     "Eigene Einstellungen ({profile})"
+  ],
+  "behavior.profile.room_fluid": [
+    "Płynny — znane pomieszczenie",
+    "Fluid — known room",
+    "Flüssig — bekannter Raum"
+  ],
+  "behavior.description.room_fluid": [
+    "Śledzi całe obiekty w szerszym obrazie i porównuje je z torem. Odrzuca chwilowe błędy i ocenia zbliżanie. Do znanego pomieszczenia bez cienkich przeszkód; sprawdź podgląd przed jazdą.",
+    "Tracks whole objects in a wider image and compares them with the route. Filters brief errors and assesses approach. For a known room without thin obstacles; check the preview before driving.",
+    "Verfolgt ganze Objekte im breiteren Bild und vergleicht sie mit der Fahrspur. Filtert kurze Fehler und bewertet Annäherung. Für einen bekannten Raum ohne dünne Hindernisse; Vorschau vor der Fahrt prüfen."
   ]
 }
