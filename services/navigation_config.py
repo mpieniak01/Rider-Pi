@@ -13,6 +13,8 @@ from services.compute_config import _lock, _require_idle_goals, _selection_lock,
 from services.navigation_profiles import DEFAULT_BEHAVIOR, validate_behavior
 from services.perception_selection import IDENTITY_FIELDS, drive_supported, identity, validate_identity
 
+MAX_MOTION_MS = 250
+
 DEFAULT = {
     "protocol_version": 1,
     "revision": 0,
@@ -65,7 +67,7 @@ def _validate_command_policy(data):
         raise ValueError("navigation_speed_invalid")
     if type(data["decision_budget_ms"]) is not int or not 100 <= data["decision_budget_ms"] <= 500:
         raise ValueError("navigation_deadline_invalid")
-    if type(data["max_motion_ms"]) is not int or not 50 <= data["max_motion_ms"] <= 200:
+    if type(data["max_motion_ms"]) is not int or not 50 <= data["max_motion_ms"] <= MAX_MOTION_MS:
         raise ValueError("navigation_duration_invalid")
     roi = data["corridor"]
     if (
@@ -166,7 +168,7 @@ def _validate_avoidance_authority(data, perception, avoidance, geometry):
     ):
         raise ValueError("navigation_geometry_calibration_required")
     if avoidance["enabled"] and (
-        perception["engine"] != "depth_plane" or data["speed"] > 0.1 or data["max_motion_ms"] > 150
+        perception["engine"] != "depth_plane" or data["speed"] > 0.1 or data["max_motion_ms"] > MAX_MOTION_MS
     ):
         raise ValueError("navigation_avoidance_limits")
     if avoidance["enabled"] and data["mode"] == "drive" and not avoidance["sweep_verified"]:
