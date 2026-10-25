@@ -1,81 +1,24 @@
-# Dokumentacja modułów aplikacyjnych (`apps/*`)
+# Indeks aplikacji
 
-> Indeks dokumentacji wszystkich modułów aplikacyjnych w katalogu `apps/`
+Moduły apps/ wykonują aplikacje robota; orkiestracja HTTP i własność zasobów
+mają osobne opisy. Obecność modułu nie oznacza jego aktywności, zainstalowanych
+zależności ani kwalifikacji fizycznej.
 
-## Spis modułów
+| Obszar | Przewodniki |
+| --- | --- |
+| Operator i wykonanie | [Ruch](motion.md), [bezpieczeństwo](safety.md), [ręczny odbiór fizyczny](physical-motion.md), [kalibracja](calibration.md), [polecenia z rozmowy](agent-control.md) |
+| Obraz | [Kamera](camera.md), [wyłączenie źródła](camera-source-off.md), [wizja](vision.md), [modele percepcji](perception-models.md), [profile nawigacji](navigation-profiles.md) |
+| Nawigacja i obserwacja | [Navigator](navigator.md), [mapper](mapper.md), [odometria](odometry.md), [telemetria systemu](system-telemetry.md) |
+| Głos i tekst | [Voice](voice.md), [chat](chat.md), [NLU](nlu.md) |
+| Ekran i wejścia | [Rysowanie](draw.md), [sink sprzętowy](hw.md), [UI](ui.md), [buźka](face.md), [własność LCD](face-lcd.md), [launcher](launcher.md), [menu](menu.md) |
+| Scenariusze programowe | [Choreographer](choreographer.md), [dema](demos.md), [symulator](simulator.md) |
 
-### Komunikacja i NLU
-- [**chat.md**](chat.md) — moduł chat: audio.transcript → OpenAI → tts.speak
-- [**nlu.md**](nlu.md) — rozpoznawanie intencji ruchu z transkrypcji głosowych (PL)
+Rzeczywiste unity uruchomieniowe opisują [zadania/usługi/zasoby](../ZADANIA_USLUGI_ZASOBY.md)
+i [mapowanie systemd](../SYSTEMD_SERVICES_MAPPING.md). Nie istnieje uniwersalne
+polecenie rider-<moduł>.service ani python -m apps.<nazwa>.
+Zachowaj jednego właściciela UART/LCD; odczyt przewodnika lub panelu nie startuje zadania.
 
-### Wizja i kamera
-- [**camera.md**](camera.md) — preview kamery z detekcją twarzy na LCD
-- [**vision.md**](vision.md) — detekcja obiektów (HOG, TFLite, ROI)
-
-### Interfejs użytkownika
-- [**draw.md**](draw.md) — prymitywy renderowania buźki (arc, eyes, mouth)
-- [**hw.md**](hw.md) — sink LCD do wyświetlania na sprzęcie
-- [**ui.md**](ui.md) — przyciski, konfiguracja UI, emocje buźki
-- [**launcher.md**](launcher.md) — menu startowe na 4 przyciski
-- [**menu.md**](menu.md) — menu nawigacyjne (dema, autonomia, teleop)
-
-### Ruch i bezpieczeństwo
-
-- [**calibration.md**](calibration.md) — rewizje profili, pomiary operatora i jawna aktywacja
-- [**motion.md**](motion.md) — ścieżki poleceń, wykonawce, rampy i zastępowanie komend
-- [**safety.md**](safety.md) — robot fizyczny, faktyczne blokady i komendy weryfikacji
-
-### Demonstracje
-- [**demos.md**](demos.md) — gotowe demonstracje (trajektorie, lemniskata)
-
-### Voice
-⚠️ **Uwaga:** Moduł `apps/voice` ma dedykowaną pełną dokumentację w [`do./voice.md`](./voice.md)
-
-## Konwencje
-
-Każdy dokument modułu zawiera:
-- **Opis:** Co robi moduł, główne klasy i funkcje
-- **Przepływ danych:** Wejście → Przetwarzanie → Wyjście
-- **Konfiguracja:** Parametry ENV/CLI, zależności do plików w `config/`
-- **Przykład użycia:** Jak uruchomić moduł (CLI, systemd)
-- **Błędy i diagnostyka:** Typowe błędy, logi, troubleshooting
-
-## Zależności między modułami
-
-```
-Przepływ danych voice → chat/nlu:
-  voice (ASR) → audio.transcript → chat → tts.speak
-                                  ↘ nlu → motion.cmd
-
-Przepływ UI:
-  ui.buttons → launcher/menu → system.mode
-  draw + hw.sink_lcd → wyświetlacz fizyczny
-  
-Przepływ wizji:
-  camera → vision.detector → motion commands
-```
-
-## Uruchamianie modułów
-
-Większość modułów może być uruchomiona jako:
-
-```bash
-# Bezpośrednio jako moduł Python
-python -m apps.<nazwa>
-
-# Lub przez systemd (jeśli skonfigurowane)
-sudo systemctl start rider-<nazwa>.service
-```
-
-Zobacz [docs/ops/systemd-scripts.md](../ops/systemd-scripts.md) dla zarządzania usługami.
-
----
-
-**Related docs:**
-- [config/POLICY.md](../config/POLICY.md) — polityka konfiguracji
-- [docs/ops/](../ops/) — skrypty operacyjne
-- [docs/config/](../config/) — parametry konfiguracji
-
-**Ostatnia aktualizacja:** 2025-01
-
-- [Historia i diagnostyka CPU/RAM](system-telemetry.md)
+Testy automatyczne używają istniejącego venv WSL, odizolowanego BUS i jawnych atrap.
+Nazwa dema ani DRY_RUN nie dowodzą izolacji fizycznej.
+[Polityka środowisk](../POLITYKA_SRODOWISK.md) · [Konfiguracja](../config/README.md) ·
+[Skrypty obsługi](../ops/README.md).

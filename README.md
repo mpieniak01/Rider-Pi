@@ -129,6 +129,12 @@ service when needed. Documentation-only changes require no hardware restart.
 - [Systemd service mapping](docs/SYSTEMD_SERVICES_MAPPING.md) and [configuration policy](docs/config/POLICY.md).
 - [Release 1.0.0](docs/release-notes/v1.0.0.md), [versioning](docs/VERSIONING.md) and [documentation policy](docs/DOCUMENTATION_POLICY.md).
 
+
+Current guides: [manual pulse/hold/release](docs/api-specs/manual-motion.md),
+[panel ownership](docs/manual-panel-authority.md),
+[revision 2 policy parameters](docs/vision-policy-parameters.md) and
+[visual image reference](docs/IMAGE_REFERENCE.md).
+
 ## License and contributions
 
 Contributions and feedback are welcome. The project uses the [MIT License](LICENSE).

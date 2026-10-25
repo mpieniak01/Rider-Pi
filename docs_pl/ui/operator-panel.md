@@ -56,16 +56,19 @@ niepotwierdzone `available`/`stop_verified` blokują napędy. `DISARMED` i
 z osobnych reguł przygotowania. ARM wymaga też hardware_ready i ready. Kasowanie ESTOP wraca do DISARMED.
 
 ARM wymaga konkretnego planu, potwierdzenia przygotowania robota, wybranego
-właściciela i zgody najwyżej na 30 sekund. Nie ma automatycznego uzbrajania
+właściciela. Ręczne ARM panelu ma arming_mode=operator bez timera; sesje
+testów/nawigacji zachowują ograniczony lease. Nie ma automatycznego uzbrajania
 po wejściu do widoku ani po ponownym połączeniu. Dla robota zasilanego
 przewodem operator musi zapewnić przestrzeń i zabezpieczyć kabel. Karty
-bezpieczeństwa w Nawigacji i Systemie mają ten sam jawny formularz; opuszczenie
-widoku unieważnia zgodę, więc przygotuj ją na stronie wykonania.
+bezpieczeństwa w Nawigacji i Systemie przygotowują zgodę dla swojego kontekstu.
+Zmiana widoku nie rozbraja ręcznej sesji operatora; hold kończy się po puszczeniu
+lub utracie fokusu/strony. Nowa strona odczytuje świeży stan i respektuje panel_id.
 
 Każde kliknięcie napędu, ARM lub kasowania ESTOP tworzy jedną kopertę:
 `request_id`, `generation`, rosnące `seq`, `source`, `ts`, `ttl_ms <= 500`.
 Panel nie ponawia automatycznie mutacji i nie odnawia metadanych starego
-żądania. Ręczny impuls ma czas najwyżej 0.25 sekundy.
+żądania. Czas ręcznego impulsu pochodzi z nastaw Pi: obecnie 0.01–1.0 s
+(początkowo 0.25 s).
 
 Odpowiedź `server_time` jest czasem serwera API, oddzielnym od czasu pomiaru
 `observed_at`. Panel uzgadnia zegar przy odczycie safety; czas polecenia
@@ -85,19 +88,20 @@ jeszcze na wysłanie treści: potrzebne jest świeże `ready` odpowiedniej domen
 Błąd producenta jest widoczny w karcie i szczegółach, a echo ani zastępczy
 dźwięk nie potwierdzają działania AI/TTS.
 
-Wysokość, balans i gotowe akcje pozostają widoczne. Stan
-`manual_characterization_required` jawnie blokuje ich wywołanie, dopóki
-procedura ręczna nie potwierdzi sposobu przerwania ruchu. Pola parametrów
-oznaczają proponowane żądanie, nie pomiar postawy robota.
+Wysokość i balans używają ogłoszonych możliwości pozycji/trybu oraz globalnego
+ARM operatora. Stan stop_verified=false nie potwierdza fizycznego przerwania.
+Figury producenta pozostają zablokowane do charakterystyki przerwania.
+Wartości są ostatnim przyjętym poleceniem, nie zmierzoną postawą.
 
-STOP jest stale dostępny i nie wymaga metadanych bezpieczeństwa. Skróty
-W/S/A/D i strzałki działają tylko w Sterowaniu, poza polami edycji, bez
-powtarzania klawisza i przy aktualnej zgodzie właściciela `manual`.
-Spacja wysyła STOP poza polami. Utrata połączenia, fokusu lub ukrycie karty
-wyłącza lokalną możliwość ruchu i próbuje wysłać STOP. Jeśli połączenie
-zniknęło, zatrzymanie fizyczne nie jest deklarowane jako potwierdzone.
-Unieważniona lokalnie generacja nie odzyskuje zgody po ponownym odczycie
-tego samego ARMED; potrzebne są STOP i jawne nowe uzbrojenie.
+STOP jest stale dostępny bez koperty bezpieczeństwa. W/S/A/D i strzałki działają
+w Sterowaniu i Kalibracji, poza polami edycji, bez powtarzania klawisza,
+przy świeżej zgodzie manual. Spacja poza polami wysyła STOP.
+Puszczenie, utrata fokusu i ukrycie strony kończą hold. W sesji
+operator/manual/panel nie rozbraja to automatycznie operatora; brak odnowienia
+ogranicza watchdog Pi. Inne czasowe sesje zachowują swoje reguły unieważnienia.
+Utrata łączności nie potwierdza fizycznego zatrzymania.
+Nowa strona respektuje [własność panelu](../manual-panel-authority.md);
+przejęcie innego panel_id wymaga STOP, świeżej generacji i jawnego ARM.
 
 ## Urządzenia i obciążenie
 

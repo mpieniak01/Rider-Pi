@@ -9,7 +9,8 @@ safety, task preparation, device ownership, polling and acknowledgements.
 | /control | One task catalog, explicit motion consent and requests/ACK |
 | /devices | Camera, audio, LCD, UART, owners and consumers; preview on demand |
 | /system | Service observations; explicit administration and separate autostart |
-| /navigation | Map/pose/path freshness, navigation requests and DISARMED configuration |
+| /calibration | Shared directional settings, command curves, profiles and manual trials |
+| /navigation | Map/pose/path freshness, explicit trials/journeys, stationary policy configuration and separate visual references |
 | /chat | Text and optional TTS, only the required domain prepared on send |
 
 The menu supports Polish and English. Language and theme choices are local

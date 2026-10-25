@@ -19,7 +19,8 @@ POST retains the existing CAS contract:
 ```
 
 Missing behavior in an older file means Legacy. No automatic migration selects
-a new profile and the browser cannot supply arbitrary policy parameters. Both
+a new profile. Revision 1 presets are immutable; revision 2 allows only bounded
+corrections advertised by parameter_editing_version=1 and parameter_schema. Both
 repositories must agree on profile revision and digest. Changing a released
 definition requires a new revision and qualification.
 
@@ -53,8 +54,8 @@ never restores movement permission.
 
 ## Panels and tests
 
-The Pi navigation panel separates saved selection and draft, shows read-only
-parameters and distinguishes raw prediction, stabilized assessment, action and
+The Pi navigation panel separates saved selection and draft, shows
+preset parameters and bounded revision 2 corrections, and distinguishes raw prediction, stabilized assessment, action and
 reason. Late responses cannot replace a newer revision. Applying is explicit;
 page load, refresh and draft selection never start motion.
 
@@ -78,7 +79,7 @@ an unapproved observation policy. Never restore movement approval from a backup.
 Model identity migration remains separate.
 
 
-[Per-model settings and operator placement / Ustawienia modeli i położenie w panelu](perception-models.md).
+[Per-model settings](perception-models.md) · [Revision 2 policy parameters](../vision-policy-parameters.md).
 
 ## Image acceptance without restarting observation
 

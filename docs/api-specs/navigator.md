@@ -1,5 +1,10 @@
 # Navigator API
 
+This guide describes the experimental local navigator, separate from the Venom
+loop. Start/return_home require current executor authorization and traversal
+qualification; HTTP 202 means pending, not execution. A map/A* path alone does
+not qualify safe return-to-home. [Current motion gate](../apps/motion.md).
+
 Autonomous navigation (Rekonesans mode) control endpoints.
 
 ## Base Path

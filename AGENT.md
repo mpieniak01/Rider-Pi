@@ -42,7 +42,7 @@
   - UART `/dev/ttyAMA0` – docelowo jeden właściciel ruchu i odczytów.
     Sprawdź posiadacza przed uruchomieniem komponentu; obecne ścieżki opisuje
     [architektura ruchu](docs_pl/apps/motion.md). Nie uruchamiaj drugiego adaptera na zajętym UART.
-  - LCD ILI9xx – przez `apps/ui/face/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
+  - LCD ILI9xx – przez `drivers/lcd/driver_ili9xx.py` (RAW/ShowImage), bez bezpośrednich SPI-write w innych miejscach.
   - **Orientacja LCD:** ekran 2″ jest w tym urządzeniu zamontowany bokiem względem orientacji
     fabrycznej. Zachowaj ten montaż. Dla buźki pozostaw kompensację obrazu `FACE_LCD_ROTATE=270`;
     splash wybiera `SPLASH_ROTATE`, przy jego braku `PREVIEW_ROT`, potem `splash_lcd_rotate`
@@ -255,7 +255,7 @@ ruff format
 ## 13) Noty migracyjne — Face LCD fast-path (2025‑09)
 
 - Usunięto zależności od `_apps/ui/face_renderers.py`.
-- Driver LCD: `apps/ui/face/driver_ili9xx.py` (mock w CI + SPI w runtime).
+- Driver LCD: `drivers/lcd/driver_ili9xx.py` (mock w CI + SPI w runtime).
 - Fast-path RAW RGB565; mock zapisuje PNG/565/meta.
 - Konfiguracja panelu/rotacji: `apps/ui/face/panel_cfg.py`; I/O: `apps/ui/face/face_io.py`.
 - CLI: `scripts/dev_face-lcd-direct.py` i `scripts/dev_face-cli.py`.

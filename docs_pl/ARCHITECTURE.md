@@ -258,7 +258,7 @@ Face (Animator→Renderer→LCD) ──> podgląd przez API lub bezpośrednio na
 
 ### LCD / Render
 
-- `apps/ui/face/driver_ili9xx.py` — most do ekranu (RAW/ShowImage).
+- `drivers/lcd/driver_ili9xx.py` — most do ekranu (RAW/ShowImage).
 - `scripts/dev_face-lcd-direct.py` — tryb demo (LCD/PNG).
 
 ---

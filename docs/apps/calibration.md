@@ -35,10 +35,13 @@ the existing version 1 HTTP envelope. The schema contains:
 | values.speed_limit | Global normalized ceiling within deployment limits. |
 | values.linear_rate/turn_rate | Command acceleration per second. |
 | values.linear_deceleration/turn_deceleration | Command deceleration per second. |
+| values.ramp_mode | 0 Linear, 1 Smooth S, 2 Logarithmic; options from Pi. |
 | values.reversal_pause | Pause at zero during reversal, seconds. |
 
-Normalized magnitudes are 0–1, bounded by the configured global ceiling (default
-0.6). Duration is 0.01–0.25 seconds including ramp up and down. Short pulses may
+Normalized magnitudes are 0–1, bounded by the saved speed_limit and directional
+maximum. Current panel settings allow up to 1.0; existing saved limits remain
+authoritative. Duration is 0.01–1.0 seconds (initial default 0.25 s), including
+ramp up and down. Read parameter_schema and control_modes from Pi. Short pulses may
 not attain their requested magnitude. The panel displays a software estimate
 of the reachable command peak; it is not a physical speed prediction.
 Impossible direction minima are rejected. Zero remains a stop.
@@ -78,8 +81,9 @@ Unverified autonomy remains blocked.
 Rider SDK commands describe UART goals; they expose no motor current/voltage
 control. Magnitudes and ramp rates are not m/s or physical acceleration.
 Height uses the Rider interface's native 75–115 range. Rider figure codes are
-1 sway, 2 vertical, 5 lift_rotate, 6 circular (255 reset). Posture and figures
-remain unavailable where safe cancellation has not been verified.
+1 sway, 2 vertical, 5 lift_rotate, 6 circular (255 reset). Height and roll balance use the advertised position/mode capabilities;
+stop_verified=false does not qualify physical cancellation. Manufacturer figures
+remain blocked pending interruption characterization.
 Do not infer encoder feedback from read_motor, or repair implausible raw yaw
 with modulo. Raw observations retain original timestamps in diagnostics.
 
@@ -105,3 +109,8 @@ limits or enable unverified actuators/autonomy.
 ## Posture controls
 
 Control and Calibration share one posture component. Height (75–115) sends on slider release; roll balance has an explicit Apply button. Both use the global operator arming gate, current settings revision and the same executor state. Reported values are last accepted commands, not measured actuator positions. Polling preserves an edited selection. Height and balance are position/mode settings; stop_verified remains false and does not claim cancellation. Manufacturer figures remain blocked until interruption is characterized. Automated motion tests remain independently disabled.
+
+Related: [manual intent and descriptors](../api-specs/manual-motion.md),
+[panel ownership](../manual-panel-authority.md), [command curves](../motion-curves.md).
+Image measurement references use a separate [visual-reference store](../IMAGE_REFERENCE.md);
+they are not motion calibration or drive approval.

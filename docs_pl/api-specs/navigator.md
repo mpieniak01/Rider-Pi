@@ -1,5 +1,10 @@
 # Navigator API
 
+Opis dotyczy eksperymentalnego lokalnego navigatora, osobnego od pętli Venoma.
+Start i return_home wymagają aktualnej zgody wykonawcy i kwalifikacji przejazdu;
+HTTP 202 oznacza pending, nie wykonanie. Mapa/A* nie kwalifikują samodzielnie
+bezpiecznego powrotu. [Aktualna brama ruchu](../apps/motion.md).
+
 Autonomous navigation (Rekonesans mode) control endpoints.
 
 ## Base Path

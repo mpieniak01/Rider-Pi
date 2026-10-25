@@ -130,6 +130,12 @@ restartujemy tylko zmienioną usługę. Sama dokumentacja nie wymaga restartu sp
 - [Mapowanie usług systemd](docs_pl/SYSTEMD_SERVICES_MAPPING.md) i [polityka konfiguracji](docs_pl/config/POLICY.md).
 - [Wydanie 1.0.0](docs_pl/release-notes/v1.0.0.md), [wersjonowanie](docs_pl/WERSJONOWANIE.md) i [polityka dokumentacji](docs_pl/POLITYKA_DOKUMENTACJI.md).
 
+
+Aktualne przewodniki: [ręczne tryby pulse/hold/release](docs_pl/api-specs/manual-motion.md),
+[własność panelu](docs_pl/manual-panel-authority.md),
+[parametry polityki r2](docs_pl/vision-policy-parameters.md) i
+[referencja pomiarowa obrazu](docs_pl/IMAGE_REFERENCE.md).
+
 ## Licencja i współpraca
 
 Zapraszamy do zgłaszania uwag i zmian. Projekt korzysta z [licencji MIT](LICENSE).

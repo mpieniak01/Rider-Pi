@@ -19,7 +19,8 @@ POST używa istniejącego CAS:
 ```
 
 Brak `behavior` w starszym pliku oznacza Legacy. Nie ma automatycznej migracji
-na nowy profil ani swobodnego podawania parametrów z panelu. Definicje obu repo
+na nowy profil. Presety r1 są niezmienne; r2 dopuszcza tylko ograniczone korekty
+ogłoszone przez parameter_editing_version=1 i parameter_schema. Definicje obu repo
 muszą mieć tę samą wersję i skrót; zmiana wydanych parametrów wymaga nowej
 rewizji profilu i ponownej kwalifikacji.
 
@@ -52,7 +53,8 @@ potwierdzenia przejazdu. Przepięcie profilu/modelu nie odtwarza ruchu.
 
 ## Panele i testy
 
-Panel nawigacji Pi pokazuje zapisany profil i draft, parametry tylko do odczytu,
+Panel nawigacji Pi pokazuje zapisany profil i draft, parametry presetu i ograniczone
+korekty rewizji 2,
 raw prediction, ocenę po stabilizacji, reakcję i przyczynę. Opóźniona odpowiedź
 nie nadpisuje nowszej rewizji. Zastosowanie profilu jest osobną akcją; otwarcie
 strony, odświeżenie i wybór opcji nie rozpoczynają jazdy.
@@ -77,7 +79,7 @@ model_sha256 oraz sweep_verified=false. Nie przywracaj starej zgody ruchu z kopi
 Migracja pól tożsamości modelu jest osobna.
 
 
-[Per-model settings and operator placement / Ustawienia modeli i położenie w panelu](perception-models.md).
+[Ustawienia modeli](perception-models.md) · [Parametry polityki rewizji 2](../vision-policy-parameters.md).
 
 ## Potwierdzenie obrazu bez restartu obserwacji
 

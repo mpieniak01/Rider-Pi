@@ -23,7 +23,7 @@ intent; an old producer cannot capture consent from a new generation.
 | State | Meaning |
 | --- | --- |
 | DISARMED | Reads only; every startup |
-| ARMED | Specific plan, owner, lease up to 30 seconds |
+| ARMED | Explicit plan and owner; operator panel ARM has no timer, test/navigation sessions use a bounded lease |
 | ESTOP | Latched inhibit; separate clear returns DISARMED |
 | UNKNOWN | No fresh snapshot; clients block actuation |
 
@@ -31,7 +31,8 @@ ARM/clear require explicit operator_consent, operator_plan and the original
 envelope. Owners: manual/follow_me/navigation. Actuators require request_id,
 source, generation, increasing seq, ts and ttl_ms 1–500. API and executor
 validate independently. Clients use API server_time and never refresh old
-commands. Drive/yaw: [-1,1], pulses up to 0.25 seconds. STOP/disarm/E-Stop
+commands. Drive/yaw: [-1,1]. Device-settings panel pulses use the
+current descriptor (0.01–1.0 s); generic/test commands retain their own limits. STOP/disarm/E-Stop
 need no fresh envelope. STOP changes generation and invalidates goals.
 Superseded pending requests receive terminal ACK; goals never replay after ARM.
 
@@ -63,8 +64,10 @@ Transport waits and mechanical stopping still need operator latency measurements
 The controller uses dt, ramps and bounded deadlines. Safety STOP immediately
 clears targets. Normalized limits are not measured m/s or braking distances.
 UART/SDK faults or failed STOP block readiness and subsequent ARM until a new
-healthy executor. SDK source verifies velocity-zero writes; height/balance/
-canned actions remain unavailable pending manual interruption characterization.
+healthy executor. SDK source verifies velocity-zero writes. Height and roll
+balance use advertised position/mode capabilities; stop_verified=false does
+not qualify physical cancellation. Manufacturer actions remain blocked pending
+interruption characterization.
 SIGTERM runs cleanup; SIGKILL, UART loss and Pi power loss have no physical STOP
 proof. No independent firmware watchdog is asserted.
 
