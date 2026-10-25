@@ -91,8 +91,9 @@ def test_ack_lost_replay_and_stale_other_choice(idle):
     initial = selection.select(choice())
     assert selection.select(choice()) == initial
     assert selection.select(choice(revision=1)) == initial
+    selection_request = choice("fast-scnn-floor")
     with pytest.raises(ValueError, match="configuration_conflict"):
-        selection.select(choice("fast-scnn-floor"))
+        selection.select(selection_request)
     assert config.snapshot() == initial
 
 
@@ -104,8 +105,9 @@ def test_replay_does_not_restore_acceptance_after_new_config(idle):
             "values": {"mode": "drive", "verified": True, "calibration_id": "new", "model_sha256": "a" * 64},
         }
     )
+    selection_request = choice()
     with pytest.raises(ValueError, match="configuration_conflict"):
-        selection.select(choice())
+        selection.select(selection_request)
     assert config.snapshot()["mode"] == "drive"
 
 
@@ -129,8 +131,9 @@ def test_replay_does_not_restore_acceptance_after_new_config(idle):
 )
 def test_active_or_unknown_executor_never_changes_config(idle, patch):
     idle[0].update(patch)
+    selection_request = choice()
     with pytest.raises(ValueError, match="requires_idle_disarmed"):
-        selection.select(choice())
+        selection.select(selection_request)
     assert not config.path().exists()
 
 
@@ -145,8 +148,9 @@ def test_active_or_unknown_executor_never_changes_config(idle, patch):
 def test_active_or_requested_loop_and_local_movement_are_blocked(idle, field, name):
     idle[1][field] = [name]
     idle[2].write_text(json.dumps(idle[1]))
+    selection_request = choice()
     with pytest.raises(ValueError, match="stop_loops_first"):
-        selection.select(choice())
+        selection.select(selection_request)
     assert not config.path().exists()
 
 
@@ -162,8 +166,9 @@ def test_missing_or_foreign_boot_journal_is_unknown(idle, state):
         idle[2].unlink()
     else:
         idle[2].write_text(json.dumps(state))
+    selection_request = choice()
     with pytest.raises(ValueError, match="goal_state_unavailable"):
-        selection.select(choice())
+        selection.select(selection_request)
 
 
 @pytest.mark.parametrize(
@@ -179,8 +184,9 @@ def test_missing_or_foreign_boot_journal_is_unknown(idle, state):
     ],
 )
 def test_invalid_selection_has_no_persistence(idle, patch):
+    selection_request = dict(choice(), **patch)
     with pytest.raises(ValueError):
-        selection.select(dict(choice(), **patch))
+        selection.select(selection_request)
     assert not config.path().exists()
 
 
@@ -288,8 +294,9 @@ def test_selection_rejects_busy_executor_mutex_without_waiting(idle):
     worker.start()
     assert entered.wait(1)
     try:
+        selection_request = choice()
         with pytest.raises(BlockingIOError):
-            selection.select(choice())
+            selection.select(selection_request)
     finally:
         release.set()
         worker.join(timeout=2)

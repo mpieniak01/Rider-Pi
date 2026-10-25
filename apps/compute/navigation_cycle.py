@@ -124,27 +124,7 @@ class NavigationCycle:
             network_error = isinstance(exc, (TimeoutError, socket.timeout, urllib.error.URLError, ConnectionError))
             if not bounded_retry and (not network_error or not self._retry_observation(exc)):
                 raise
-            detail = {}
-            if isinstance(exc, urllib.error.HTTPError):
-                from apps.compute.stream_prepare import http_error_code
-
-                detail = {"http_status": exc.code, "transport_error": http_error_code(exc)}
-            reason = "navigation_capture_budget_expired" if bounded_retry else detail.get("transport_error")
-            if reason is None or reason.startswith("http_"):
-                reason = "vision_observation_transport_retry"
-            self.last_result = {
-                "state": "unknown",
-                "action": "stop",
-                "vision_action": "stop",
-                "reason": reason,
-                "motion_reason": reason,
-                **detail,
-                **({"source": dict(frame["data"])} if isinstance(frame["data"], dict) else {}),
-                "clear_count": 0,
-                "valid_for_ms": 0,
-                **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
-            }
-            self._status(self.last_result)
+            self._record_retry_result(exc, meta, frame, bounded_retry)
             if not bounded_retry:
                 self.closed.wait(0.2)
             return False, None
@@ -152,6 +132,29 @@ class NavigationCycle:
         self._check_model_reply(decision, meta)
         self.last_result = decision
         return True, decision
+
+    def _record_retry_result(self, error, meta, frame, bounded_retry):
+        detail = {}
+        if isinstance(error, urllib.error.HTTPError):
+            from apps.compute.stream_prepare import http_error_code
+
+            detail = {"http_status": error.code, "transport_error": http_error_code(error)}
+        reason = "navigation_capture_budget_expired" if bounded_retry else detail.get("transport_error")
+        if reason is None or reason.startswith("http_"):
+            reason = "vision_observation_transport_retry"
+        self.last_result = {
+            "state": "unknown",
+            "action": "stop",
+            "vision_action": "stop",
+            "reason": reason,
+            "motion_reason": reason,
+            **detail,
+            **({"source": dict(frame["data"])} if isinstance(frame["data"], dict) else {}),
+            "clear_count": 0,
+            "valid_for_ms": 0,
+            **{k: meta[k] for k in ("protocol_version", "run_id", "frame_id", "sequence", "config_revision")},
+        }
+        self._status(self.last_result)
 
     def _request_diagnostics(self):
         attempt = dict(self.request_attempt or {})

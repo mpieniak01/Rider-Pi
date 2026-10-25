@@ -139,3 +139,13 @@ PYTHONPATH=. python -m pytest tests/test_journey_lifecycle_concurrency.py \
   tests/test_journey_preflight.py tests/test_navigation_journey.py \
   tests/test_navigation_transport.py tests/test_sonar319_admission_boundaries.py
 ```
+
+## Test and configuration panel readability
+
+Configuration, model selection and timeout tests check each condition with
+a separate assertion. Build request data and input exceptions before
+`pytest.raises`, leaving only the operation expected to fail inside its scope.
+Configuration and decision validation and panel rendering use helpers for
+cohesive stages, preserving check order and CAS. Smooth panel scrolling is
+enabled only under `prefers-reduced-motion: no-preference`; reduced-motion
+preferences retain default scrolling.

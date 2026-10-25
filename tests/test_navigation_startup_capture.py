@@ -67,9 +67,12 @@ def test_first_capture_can_expire_without_ending_the_original_startup(isolated, 
         None,
     )
     assert runner.policy["mode"] == "drive"
-    assert runner.run_id == epoch and runner.lease is lease and not lease.latched
+    assert runner.run_id == epoch
+    assert runner.lease is lease
+    assert not lease.latched
     assert runner.startup_deadline == deadline
-    assert lease.deadline is None and lease.feedback_deadline is None
+    assert lease.deadline is None
+    assert lease.feedback_deadline is None
     assert commands == []
     assert runner.last_result["action"] == "stop"
     assert runner.request_attempt["state"] == "failed"
@@ -156,7 +159,8 @@ def test_repeated_expired_captures_share_the_original_five_second_window(isolate
         now[0] += 0.302
         assert runner._retry_capture_budget(CaptureBudgetExpired(), metadata(runner, sequence))
         assert runner.startup_deadline == deadline
-        assert runner.lease.deadline is None and runner.lease.feedback_deadline is None
+        assert runner.lease.deadline is None
+        assert runner.lease.feedback_deadline is None
     now[0] = deadline
     assert not runner._retry_capture_budget(CaptureBudgetExpired(), metadata(runner, 15))
     assert commands == []
@@ -169,8 +173,10 @@ def test_startup_does_not_override_an_existing_zero_permit_or_feedback_deadline(
     runner.lease.feedback_deadline = 10.3
     now[0] = 10.15
     assert not runner._retry_capture_budget(CaptureBudgetExpired(), metadata(runner, 1))
-    assert runner.lease.deadline == 10.2 and runner.lease.feedback_deadline == 10.3
+    assert runner.lease.deadline == 10.2
+    assert runner.lease.feedback_deadline == 10.3
     now[0] = 10.25
     assert runner._retry_capture_budget(CaptureBudgetExpired(), metadata(runner, 2))
-    assert runner.lease.deadline is None and runner.lease.feedback_deadline == 10.3
+    assert runner.lease.deadline is None
+    assert runner.lease.feedback_deadline == 10.3
     assert commands == []

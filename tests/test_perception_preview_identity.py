@@ -66,7 +66,8 @@ def test_raw_capture_does_not_pretend_to_be_local_inference(source):
     response = client.get("/camera/raw")
     assert response.status_code == 200
     metadata = json.loads(response.headers["X-Rider-Source-Json"])
-    assert "model_id" not in metadata and "local_engine" not in metadata
+    assert 'model_id' not in metadata
+    assert 'local_engine' not in metadata
     assert "X-Rider-Local-Model-Id" not in response.headers
 
 
@@ -88,7 +89,8 @@ def test_new_config_rejects_old_server_image_and_never_uses_fresh_file_fallback(
     assert response.headers["X-Rider-Stale"] == "true"
     assert response.get_json()["error"] == "camera_pipeline_frame_unavailable"
     assert "X-Rider-Local-Model-Id" not in response.headers
-    assert old["local_engine"] == "ssd" and old["pipeline_revision"] == 4
+    assert old['local_engine'] == 'ssd'
+    assert old['pipeline_revision'] == 4
 
 
 @pytest.mark.parametrize(

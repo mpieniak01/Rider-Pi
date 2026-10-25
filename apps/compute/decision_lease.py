@@ -179,22 +179,7 @@ class DecisionLease:
         return True
 
     def _admit_decision(self, decision, frame_id, sequence, captured_monotonic, now):
-        from services.navigation_behavior import active, reply_valid
-        from services.perception_selection import drive_supported
-
-        if not isinstance(decision, dict) or not reply_valid(self.config, decision):
-            self._halt("navigation_behavior_identity_mismatch")
-            return None
-        perception = self.config.get("perception", {})
-        if not drive_supported(perception):
-            self._halt("navigation_model_observe_only")
-            return None
-        if perception.get("model_id") and (
-            not isinstance(decision, dict)
-            or decision.get("model_id") != perception["model_id"]
-            or decision.get("artifact_sha256") != perception.get("artifact_sha256")
-        ):
-            self._halt("navigation_model_identity_mismatch")
+        if not self._admit_model_reply(decision):
             return None
         identity = {
             "protocol_version": self.config.get("avoidance", {}).get("protocol_version", 2)
@@ -206,15 +191,7 @@ class DecisionLease:
             "config_revision": self.config["revision"],
         }
         remaining = self.config["decision_budget_ms"] / 1000 - (now - captured_monotonic)
-        if (
-            not isinstance(decision, dict)
-            or any(decision.get(k) != v for k, v in identity.items())
-            or any(type(decision.get(k)) is not int for k in ("protocol_version", "sequence", "config_revision"))
-            or not math.isfinite(captured_monotonic)
-            or now < captured_monotonic
-            or type(sequence) is not int
-            or sequence <= self.last_seq
-        ):
+        if not self._reply_identity_matches(decision, identity, sequence, captured_monotonic, now):
             self._halt("decision_invalid_or_expired")
             return None
         if (self.journey is None and "journey" in decision) or (
@@ -226,13 +203,7 @@ class DecisionLease:
         if type(valid) is not int or not 0 < valid <= 200:
             self._halt("decision_invalid_or_expired")
             return None
-        actions = {"go", "stop"}
-        if active(self.config):
-            actions.add("slow")
-        if identity["protocol_version"] == 2:
-            actions |= {"turn_left", "turn_right"}
-        if identity["protocol_version"] == 3:
-            actions |= {"steer_left", "steer_right"}
+        actions = self._allowed_actions(identity["protocol_version"])
         if decision.get("action") not in actions:
             self._halt("decision_invalid_action")
             return None
@@ -247,20 +218,66 @@ class DecisionLease:
         if remaining <= 0:
             # A correctly bound late GO is never actuated. A continuous journey
             # may await a NEW capture inside its existing feedback window only.
-            if (
-                decision["action"] == "go"
-                and decision.get("state") == "clear"
-                and type(decision.get("clear_count")) is int
-                and decision["clear_count"] >= 3
-                and self.config["mode"] == "drive"
-                and self.config["verified"] is True
-                and decision.get("model_sha256") == self.config["model_sha256"]
-                and self._await_fresh_capture(now)
-            ):
+            if self._await_late_go(decision, now):
                 return None
             self._halt("decision_invalid_or_expired")
             return None
         return identity, remaining
+
+    def _reply_identity_matches(self, decision, identity, sequence, captured_monotonic, now):
+        return not (
+            not isinstance(decision, dict)
+            or any(decision.get(k) != v for k, v in identity.items())
+            or any(type(decision.get(k)) is not int for k in ("protocol_version", "sequence", "config_revision"))
+            or not math.isfinite(captured_monotonic)
+            or now < captured_monotonic
+            or type(sequence) is not int
+            or sequence <= self.last_seq
+        )
+
+    def _admit_model_reply(self, decision):
+        from services.navigation_behavior import reply_valid
+        from services.perception_selection import drive_supported
+
+        if not isinstance(decision, dict) or not reply_valid(self.config, decision):
+            self._halt("navigation_behavior_identity_mismatch")
+            return False
+        perception = self.config.get("perception", {})
+        if not drive_supported(perception):
+            self._halt("navigation_model_observe_only")
+            return False
+        if perception.get("model_id") and (
+            not isinstance(decision, dict)
+            or decision.get("model_id") != perception["model_id"]
+            or decision.get("artifact_sha256") != perception.get("artifact_sha256")
+        ):
+            self._halt("navigation_model_identity_mismatch")
+            return False
+        return True
+
+    def _allowed_actions(self, protocol_version):
+        from services.navigation_behavior import active
+
+        actions = {"go", "stop"}
+        if active(self.config):
+            actions.add("slow")
+        if protocol_version == 2:
+            actions |= {"turn_left", "turn_right"}
+        if protocol_version == 3:
+            actions |= {"steer_left", "steer_right"}
+        return actions
+
+    def _await_late_go(self, decision, now):
+        return (
+            decision["action"] == "go"
+            and decision.get("state") == "clear"
+            and type(decision.get("clear_count")) is int
+            and decision["clear_count"] >= 3
+            and self.config["mode"] == "drive"
+            and self.config["verified"] is True
+            and decision.get("model_sha256") == self.config["model_sha256"]
+            and self._await_fresh_capture(now)
+        )
 
     def _accept_stop(self, decision, identity, now, remaining, valid):
         if identity["protocol_version"] == 3 and decision.get("terminal_stop") is True:

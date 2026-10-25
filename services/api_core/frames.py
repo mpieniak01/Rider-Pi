@@ -151,12 +151,7 @@ def headers(response, row):
     return response
 
 
-def _ram_response(stream):
-    from services.api_core.camera_pipeline_api import frame
-
-    result = make_response(frame(view="raw" if stream == "raw" else "proc"))
-    encoded = result.headers.pop("X-Rider-Source", None)
-    source = json.loads(encoded) if encoded else None
+def _measured_ram_source(source):
     age = None
     if source is not None:
         # The descriptor and the body come from the same RAM read. A second
@@ -166,6 +161,16 @@ def _ram_response(stream):
         if math.isfinite(measured) and math.isfinite(reported) and measured >= 0 and reported >= 0:
             age = max(measured, reported)
             source = dict(source, frame_age_ms=age)
+    return source, age
+
+
+def _ram_response(stream):
+    from services.api_core.camera_pipeline_api import frame
+
+    result = make_response(frame(view="raw" if stream == "raw" else "proc"))
+    encoded = result.headers.pop("X-Rider-Source", None)
+    source = json.loads(encoded) if encoded else None
+    source, age = _measured_ram_source(source)
     stale = age is None or age > MAX_AGE_S * 1000
     row = {
         "source": "pi-camera",

@@ -56,7 +56,8 @@ def test_save_tuning_requires_new_observation_and_preserves_models(store):
             },
         }
     )
-    assert first["mode"] == "observe" and first["verified"] is False
+    assert first['mode'] == 'observe'
+    assert first['verified'] is False
     assert first["calibration_id"] == first["model_sha256"] == ""
     assert first["perception"]["semantic_models"][SEG]["pixel_confidence"] == 0.72
     second = navigation_config.configure(
@@ -64,8 +65,9 @@ def test_save_tuning_requires_new_observation_and_preserves_models(store):
     )
     assert second["perception"]["semantic_models"] == first["perception"]["semantic_models"]
     assert semantic_parameters(second["perception"], second["behavior"])["pixel_confidence"] == 0.72
+    configuration = {"revision": 0, "values": {"perception": values()}}
     with pytest.raises(ValueError, match="conflict"):
-        navigation_config.configure({"revision": 0, "values": {"perception": values()}})
+        navigation_config.configure(configuration)
     assert navigation_config.snapshot()["revision"] == 2
 
 
@@ -74,8 +76,9 @@ def test_save_tuning_requires_new_observation_and_preserves_models(store):
 )
 def test_tuning_rejects_motion_and_unknown_state(store, monkeypatch, bad):
     monkeypatch.setattr(safety_contract, "read_status", lambda **_: {**stopped(), **bad})
+    configuration = {"revision": 0, "values": {"perception": values()}}
     with pytest.raises(ValueError, match="requires_stopped"):
-        navigation_config.configure({"revision": 0, "values": {"perception": values()}})
+        navigation_config.configure(configuration)
     assert navigation_config.snapshot()["revision"] == 0
 
 
@@ -120,7 +123,8 @@ def test_config_api_presents_capability_effective_settings_and_cas(store):
         assert config["perception_tuning"]["effective"]["traversable_labels"] == [3, 28]
     with app.test_request_context(method="GET"):
         response, code = config_handler()
-        assert code == 200 and response.get_json()["revision"] == 1
+        assert code == 200
+        assert response.get_json()['revision'] == 1
     with app.test_request_context(method="POST", json={"revision": 0, "values": {"perception": values()}}):
         response, code = config_handler()
         assert code == 409
@@ -129,7 +133,8 @@ def test_config_api_presents_capability_effective_settings_and_cas(store):
 def test_empty_policy_preserves_previous_legacy_parameters():
     assert validate_semantic_models({}) == {}
     p = semantic_parameters({"engine": "segformer"})
-    assert p["pixel_confidence"] == 0.8 and p["traversable_labels"] == [3]
+    assert p['pixel_confidence'] == 0.8
+    assert p['traversable_labels'] == [3]
     assert p["min_floor_fraction"] == 1
 
 
@@ -207,4 +212,5 @@ def test_local_executor_disallows_new_profiles_but_allows_legacy_rollback(store,
     navigation_config._write(navigation_config.path(), old)
     result = navigation_config.configure({"revision": 0, "values": {"behavior": DEFAULT_BEHAVIOR}})
     assert result["behavior"]["profile_id"] == "legacy"
-    assert result["mode"] == "observe" and result["verified"] is False
+    assert result['mode'] == 'observe'
+    assert result['verified'] is False
