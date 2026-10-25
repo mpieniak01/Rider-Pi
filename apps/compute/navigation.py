@@ -552,12 +552,14 @@ class NavigationRunner(NavigationCycle):
         # A second preflight here only delays the next capture and decision.
 
     def _start_run(self):
+        """Admit a fresh run after negotiating every capability required by its policy."""
         from apps.compute.stream_prepare import prepare_stream
 
         prepared = prepare_stream(
             selection=self.selection,
             max_age_ms=self.policy["decision_budget_ms"],
             **({"model_tuning_version": 1} if self.policy["perception"].get("semantic_models") else {}),
+            **({"input_region_version": 1} if self.policy["perception"].get("input_region") else {}),
             **(
                 {"temporal_version": 1}
                 if self.policy.get("behavior", {}).get("profile_id", "legacy") != "legacy"

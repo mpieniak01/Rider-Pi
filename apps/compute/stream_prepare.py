@@ -154,6 +154,18 @@ def _require_model_tuning(status, version):
         raise ComputeError("navigation_model_tuning_update_required", 409)
 
 
+def _require_input_region(status, version):
+    """Reject hosts that cannot apply the exact versioned input-region contract."""
+    if version is not None and (
+        type(version) is not int
+        or version != 1
+        or not isinstance(status, dict)
+        or type(status.get("input_region_version")) is not int
+        or status["input_region_version"] != version
+    ):
+        raise ComputeError("navigation_input_region_update_required", 409)
+
+
 def _require_journey(status, version):
     if version is not None and (
         not isinstance(status, dict)
@@ -174,9 +186,17 @@ def prepare_stream(
     journey_version=None,
     temporal_version=None,
     model_tuning_version=None,
+    input_region_version=None,
 ):
+    """Prepare the selected source and verify policy capabilities within one deadline."""
     streaming = native()
-    if not streaming and journey_version is None and temporal_version is None and model_tuning_version is None:
+    if (
+        not streaming
+        and journey_version is None
+        and temporal_version is None
+        and model_tuning_version is None
+        and input_region_version is None
+    ):
         return None
     if journey_version is not None and (type(journey_version) is not int or journey_version != 1):
         raise ComputeError("navigation_journey_update_required", 409)
@@ -191,6 +211,7 @@ def prepare_stream(
             _require_journey(status, journey_version)
             _require_temporal(status, temporal_version)
             _require_model_tuning(status, model_tuning_version)
+            _require_input_region(status, input_region_version)
             if snapshot() != config:
                 raise ComputeError("navigation_configuration_changed", 409)
             if clock() >= deadline:
@@ -208,6 +229,7 @@ def prepare_stream(
             journey_version,
             temporal_version,
             model_tuning_version,
+            input_region_version,
         )
     finally:
         if owns_opener and hasattr(opener, "close"):
@@ -226,7 +248,9 @@ def _prepare_native_stream(
     journey_version,
     temporal_version=None,
     model_tuning_version=None,
+    input_region_version=None,
 ):
+    """Poll a matching native source while checking the current host capabilities."""
     while clock() < deadline:
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)
@@ -242,6 +266,7 @@ def _prepare_native_stream(
         _require_journey(status, journey_version)
         _require_temporal(status, temporal_version)
         _require_model_tuning(status, model_tuning_version)
+        _require_input_region(status, input_region_version)
         if clock() >= deadline:
             break
         if snapshot() != config:

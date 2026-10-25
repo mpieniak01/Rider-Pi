@@ -217,6 +217,7 @@ class TrialPreparation:
         self._reserve(self.body)
 
     def _prepare_sources(self):
+        """Reserve a camera and negotiate the active policy before authority handoff."""
         # Reserve the passive consumer before releasing the old producer.
         # Otherwise S15's last-owner cleanup stops the shared camera/feed.
         self.progress("camera_reservation")
@@ -248,11 +249,13 @@ class TrialPreparation:
             **({"journey_version": 1} if self.is_journey else {}),
             **({"temporal_version": 1} if config.get("behavior", {}).get("profile_id", "legacy") != "legacy" else {}),
             **({"model_tuning_version": 1} if config.get("perception", {}).get("semantic_models") else {}),
+            **({"input_region_version": 1} if config.get("perception", {}).get("input_region") else {}),
         )
         self.guard()
         return config
 
     def _warm_source_ready(self):
+        """Recheck host crop capability before reusing a fresh passive producer."""
         row = self.status()
         # Approval-only persistence does not restart a passive runner. Let its
         # current bounded cycle adopt the new revision before deciding to replace
@@ -294,6 +297,7 @@ class TrialPreparation:
                 timeout_s=min(2.0, max(0.01, self.context["deadline"] - self.clock())),
                 max_age_ms=self.policy().get("decision_budget_ms", 300),
                 journey_version=1,
+                **({"input_region_version": 1} if self.policy().get("perception", {}).get("input_region") else {}),
             )
         except ComputeError as exc:
             if exc.code not in {"navigation_stream_source_mismatch", "navigation_stream_prepare_timeout"}:
@@ -493,12 +497,16 @@ class TrialPreparation:
                 pass
 
     def _raise_failure(self, error, diagnostic):
+        """Report known preparation failures without leaking arbitrary backend errors."""
         if isinstance(error, TrialError):
             error.details = {**(error.details or {}), "preparation": diagnostic}
             raise error from None
         from apps.compute.client import ComputeError
 
-        if isinstance(error, ComputeError) and error.code == "navigation_journey_update_required":
+        if isinstance(error, ComputeError) and error.code in {
+            "navigation_journey_update_required",
+            "navigation_input_region_update_required",
+        }:
             raise TrialError(error.code, 409, details={"preparation": diagnostic}) from error
         known = {
             "compute_stop_goals_first",

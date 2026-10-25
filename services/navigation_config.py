@@ -80,17 +80,22 @@ def _validate_command_policy(data):
 
 
 def _validated_perception(perception):
+    """Validate perception settings while retaining optional versioned input bounds."""
     required = set(DEFAULT["perception"])
     if (
         not isinstance(perception, dict)
         or not required <= set(perception)
-        or set(perception) - required - IDENTITY_FIELDS - {"semantic_models"}
+        or set(perception) - required - IDENTITY_FIELDS - {"semantic_models", "input_region"}
     ):
         raise ValueError("navigation_perception_invalid")
     validate_identity(perception)
     from services.perception_tuning import validate_semantic_models
 
     validate_semantic_models(perception.get("semantic_models", {}))
+    if "input_region" in perception:
+        from services.model_input import validate_input_region
+
+        validate_input_region(perception["input_region"])
     if not isinstance(perception["engine"], str) or perception["engine"] not in {"segformer", "depth_plane"}:
         raise ValueError("navigation_perception_invalid")
     for key, low, high in (("residual_limit", 0.01, 0.15), ("outlier_limit", 0.0, 0.02), ("slope_min", 1.0, 4.0)):
@@ -205,6 +210,7 @@ def _validate_calibration(data):
 
 
 def validate(data):
+    """Validate the complete device-owned navigation policy before persistence."""
     if isinstance(data, dict) and "behavior" not in data:
         data = {**data, "behavior": dict(DEFAULT_BEHAVIOR)}
     _validate_configuration_metadata(data)
@@ -216,6 +222,9 @@ def validate(data):
     avoidance = _validated_avoidance(data["avoidance"])
     geometry = _validated_geometry(avoidance["geometry"])
     _validate_avoidance_authority(data, perception, avoidance, geometry)
+    from services.model_input import validate_input_policy
+
+    validate_input_policy(data)
     return data
 
 

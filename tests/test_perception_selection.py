@@ -311,3 +311,23 @@ def test_http_identity_commit_returns_current_config_and_cache_is_disabled(idle)
         assert response.headers["Cache-Control"] == "no-store"
         assert response.json["config"]["perception"]["model_id"] == choice()["model_id"]
         assert http.post("/api/navigation/model-selection", json=choice("fast-scnn-floor")).status_code == 409
+
+
+@pytest.mark.parametrize("corridor,expected_top", [([0.35, 0.8, 0.65, 0.95], 0.4), ([0.35, 0.5, 0.65, 0.6], 0)])
+def test_da2_default_input_covers_existing_floor_reference(idle, corridor, expected_top):
+    """A valid non-default corridor must not block selecting a qualified model."""
+    row = accepted()
+    row["corridor"] = corridor
+    config.path().write_text(json.dumps(row))
+    selected = selection.select(choice())
+    assert selected["perception"]["input_region"]["bounds"] == [0, expected_top, 1, 1]
+    assert config.snapshot() == selected
+
+
+def test_da2_selection_preserves_operator_crop(idle):
+    """Choosing a model must retain a compatible operator-defined input region."""
+    row = accepted()
+    custom = {"version": 1, "bounds": [0.0, 0.2, 1.0, 1.0]}
+    row["perception"]["input_region"] = custom
+    config.path().write_text(json.dumps(row))
+    assert selection.select(choice())["perception"]["input_region"] == custom
