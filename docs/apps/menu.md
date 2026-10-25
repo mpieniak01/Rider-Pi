@@ -1,54 +1,30 @@
-# Moduł Menu (`apps/menu`)
+# Four-button menu
 
-## Opis
+The maintained four-button implementation is
+[apps/menu/main.py](../../apps/menu/main.py). apps/launcher/main.py was removed;
+do not use it as a launch command. The separate [legacy CLI](launcher.md) is
+apps/main.py and has different behavior.
 
-Moduł `apps/menu` implementuje **menu nawigacyjne** dla robota — podobny do `apps/launcher`, ale potencjalnie z dodatkowymi funkcjami.
+The menu subscribes to ui.button and motion.state. It handles id=LEFT|RIGHT|OK|BACK
+with event=down; LEFT/RIGHT wrap the cursor, OK selects and BACK requests STOP.
+It publishes system.menu.state about once per second and system.mode on selection.
 
-⚠️ **Uwaga:** Plik `apps/menu/main.py` ma identyczną zawartość jak `apps/launcher/main.py`. Prawdopodobnie jeden z nich jest przestarzały lub duplikatem.
+| Item | Intent |
+| --- | --- |
+| Dema | STOP then system.mode=demos, demo=trajectory |
+| Autonomia | STOP then system.mode=autonomy |
+| Teleop | STOP then system.mode=teleop |
+| Ustawienia / Logi | Placeholders, no implemented action |
 
-### Główny plik
+STOP uses motion.command with action=stop, source=manual, origin=physical_menu
+and a fresh request_id. Publication alone is not confirmation of physical stop.
+The menu does not grant ARM or manufacture current command generations.
 
-- **`main.py`** — menu na 4 przyciski (identyczne z launcher)
+A fresh battery observation below 0.15 blocks the Dema/Autonomia selection.
+Missing battery is represented as unknown; this menu check is not a complete
+safety admission policy. Consumers and the current executor remain authoritative.
+The module uses common.bus/ZeroMQ, not just the standard library.
 
-## Relacja do launcher
-
-Według analizy kodu:
-- `apps/menu/main.py` = `apps/launcher/main.py` (identyczna funkcjonalność)
-- Oba moduły subskrybują `ui.button` i `motion.state`
-- Oba publikują `system.mode`, `motion.cmd`, `system.menu.state`
-
-**Rekomendacja:** Użyj **`apps/launcher`** jako głównego modułu menu. Moduł `apps/menu` może być przestarzały.
-
-## Zobacz dokumentację
-
-Pełna dokumentacja funkcjonalności menu znajduje się w:
-- [**launcher.md**](launcher.md) — moduł menu startowego
-
-## Różnice (jeśli istnieją)
-
-⚠️ **Wymaga weryfikacji:**
-- Sprawdź historię commitów Git dla `apps/menu/` i `apps/launcher/`
-- Możliwe że jeden jest refaktoryzacją drugiego
-- Lub jeden służy do testów/dev, drugi do produkcji
-
-## Przykład użycia
-
-```bash
-# Uruchom menu (identycznie jak launcher)
-python -m apps.menu.main
-```
-
-## Rekomendacje
-
-1. **Jeśli oba są identyczne:** Usuń jeden z nich i zaktualizuj referencje
-2. **Jeśli służą różnym celom:** Dodaj komentarz w kodzie wyjaśniający różnice
-3. **Dla nowych użytkowników:** Używaj `apps/launcher` (nowszy?)
-
----
-
-**Related docs:**
-- [launcher.md](launcher.md) — pełna dokumentacja menu startowego
-- [ui.md](ui.md) — moduł UI (przyciski)
-
-**Ostatnia aktualizacja:** 2025-01  
-**Status:** ⚠️ Możliwy duplikat `apps/launcher` — wymaga weryfikacji
+[Button input](ui.md) · [Motion authority](motion.md) ·
+[Actual task/service mappings](../TASKS_SERVICES_RESOURCES.md).
+Tests must isolate the BUS because a menu intent can trigger a consumer.

@@ -34,10 +34,13 @@ dotychczasowej koperty HTTP w wersji 1:
 | values.speed_limit | Globalny limit polecenia w granicach wdrożenia. |
 | values.linear_rate/turn_rate | Narastanie polecenia na sekundę. |
 | values.linear_deceleration/turn_deceleration | Wygaszanie polecenia na sekundę. |
+| values.ramp_mode | 0 Liniowy, 1 Łagodny S, 2 Logarytmiczny; opcje z Pi. |
 | values.reversal_pause | Przerwa w zerze przy zmianie znaku, sekundy. |
 
-Siła 0–1 jest ograniczona globalnym limitem (domyślnie 0.6). Czas 0.01–0.25 s
-obejmuje narastanie i wygaszanie. Krótki impuls może nie osiągnąć zadanej wartości.
+Siłę 0–1 ograniczają zapisany speed_limit i maksimum kierunku. Obecne nastawy
+panelu dopuszczają limit do 1.0; wcześniejsze zapisane limity pozostają wiążące.
+Czas 0.01–1.0 s (początkowo 0.25 s) obejmuje narastanie i wygaszanie.
+Zakresy i tryby odczytuj z parameter_schema oraz control_modes Pi. Krótki impuls może nie osiągnąć zadanej wartości.
 Panel pokazuje szacowane maksimum polecenia, nie przewidywaną prędkość fizyczną.
 Nieosiągalne minimum kierunku jest odrzucane. Zero pozostaje zatrzymaniem.
 
@@ -73,8 +76,9 @@ a nie drugim formularzem konfiguracji ruchu. Autonomia pozostaje zablokowana.
 SDK Ridera wysyła cele UART; nie udostępnia sterowania prądem/napięciem silnika.
 Siła i tempo zmian nie oznaczają m/s ani fizycznego przyspieszenia.
 Wysokość korzysta z natywnego zakresu Ridera 75–115. Figury: 1 sway, 2 vertical,
-5 lift_rotate, 6 circular; 255 reset. Postawa i figury pozostają niedostępne
-bez potwierdzonej możliwości przerwania. read_motor nie potwierdza enkoderów;
+5 lift_rotate, 6 circular; 255 reset. Wysokość i balans korzystają z ogłoszonych możliwości pozycji/trybu;
+stop_verified=false nie potwierdza możliwości fizycznego przerwania.
+Figury pozostają zablokowane do charakterystyki przerwania. read_motor nie potwierdza enkoderów;
 niewiarygodnego yaw nie naprawiamy modulo. Diagnostyka zachowuje surowe dane i czas.
 
 Uzbrojenie panelu jest niezależne od zgody na fizyczne testy. Automatyczne pytest/CI
@@ -99,3 +103,8 @@ wdrożenia i nie odblokowują niezweryfikowanych aktuatorów ani autonomii.
 ## Sterowanie postawą
 
 Sterowanie i Kalibracja używają jednego komponentu postawy. Wysokość (75–115) jest wysyłana po puszczeniu suwaka; balans przechyłu wymaga przycisku Ustaw. Obie funkcje korzystają z globalnego uzbrojenia operatora, aktualnej rewizji ustawień i wspólnego stanu wykonawcy. Wartości oznaczają ostatnie przyjęte polecenia, nie pomiar pozycji. Odczyt okresowy zachowuje edytowany wybór. Wysokość i balans są nastawami pozycji/trybu; stop_verified pozostaje false i nie potwierdza możliwości przerwania. Figury producenta pozostają zablokowane do charakterystyki przerwania. Automatyczne testy ruchu pozostają niezależnie wyłączone.
+
+Powiązane: [zamiar ręczny i deskryptory](../api-specs/manual-motion.md),
+[własność panelu](../manual-panel-authority.md), [krzywe polecenia](../motion-curves.md).
+Referencje pomiarowe obrazu mają osobny [magazyn wizualny](../IMAGE_REFERENCE.md);
+nie są kalibracją ruchu ani odbiorem jazdy.

@@ -183,7 +183,7 @@ PY
 
 ## 8) Notatki implementacyjne
 
-- Sterownik: `apps/ui/face/driver_ili9xx.py`.
+- Sterownik: `drivers/lcd/driver_ili9xx.py`.
 - Domyślny HZ:
 
 ```py

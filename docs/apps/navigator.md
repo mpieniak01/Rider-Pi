@@ -1,5 +1,10 @@
 # Navigator — Autonomous Navigation
 
+This guide describes the experimental local navigator, separate from the Venom
+loop. Start/return_home require current executor authorization and traversal
+qualification; HTTP 202 means pending, not execution. A map/A* path alone does
+not qualify safe return-to-home. [Current motion gate](motion.md).
+
 The Navigator module provides autonomous exploration and navigation capabilities for the Rider-Pi robot.
 
 ## Overview

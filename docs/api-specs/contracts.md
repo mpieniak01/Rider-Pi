@@ -239,7 +239,7 @@ LCD `preview_config` has its own source time. Actual LCD `source`/`observed_at` 
 
 ## Motion panel scope
 - Overview, Devices and Chat expose observations and non-actuating operations, without motion consent forms or STOP shortcuts. Their state observer may provide measurements but does not send commands on focus loss.
-- Navigation remains a passive visualizer without an ARM form. Its task catalog shows only non-actuating tasks. Autonomous motion remains unavailable pending manual characterization.
+- Navigation opens passively and exposes explicit preparation for supported bounded trials/journeys. Reading, editing or saving never grants ARM; physical acceptance remains separate.
 - Control and Calibration require local consent, a short lease, STOP, the correct owner and fresh state for actuator operations.
 - System opens as diagnostics. Consent and STOP controls appear after enabling administration because starting/restarting some services can actuate the robot.
 - Clearing ESTOP requires an explicit operator plan and consent. It ends in DISARMED and never automatically arms. ARM requires renewed consent.
@@ -257,7 +257,8 @@ there is no additional per-arrow consent. Reading, sliders, save, apply and roll
 There are no automatic repeats or calibration sequences.
 
 The optional profile object interaction contains linear_speed, turn_speed (0–1)
-and pulse_duration (0.01–0.25 s). Both clients read shared Pi settings from
+and pulse_duration (0.01–0.25 s in the archived interaction object).
+The current panel uses separate v2 settings described below. Both clients read shared Pi settings from
 motion.calibration.interaction. They do not grant motion authority.
 Legacy profiles remain readable. Existing motion ramps and executor ceilings
 stay authoritative. Application still needs both consumer confirmations;
@@ -308,10 +309,27 @@ A bounded panel movement pulse stops the drive when it ends, while operator armi
 
 
 ## Shared manual controls
-GET/POST /api/calibration/controls exposes the Pi-owned rider.manual_settings v1 object: revision, values, limits, observed_at, actuation=false. values contains linear_speed, turn_speed, pulse_duration, speed_limit, linear_rate and turn_rate. POST accepts revision plus a values patch, writes atomically, requires an idle executor and never sends an actuator command. Stale writes return 409.
-Both Pi and PC control/calibration views poll this same object and disable movement while changes are pending or data is missing/stale. Every operator movement carries direction and settings_revision with the exact shared vx/yaw/duration. The executor rejects obsolete revisions and inconsistent values. Opening a view, importing a draft, or reading a historical profile never replaces live settings. Explicit activation of a saved profile updates the shared settings.
-Default pulse is 0.25 s; software ramps are 3 linear / 4 turn normalized units per second, with the existing speed cap 0.6 and pulse cap 0.25 s retained. Turn mapping v3 uses 180 native SDK units at normalized 1; old physical measurements for mapping v2 must not be reused as verified v3 data. A reversal writes a neutral drive command before ramping in the newly requested direction, without disarming the panel. These are software defaults, not physically measured calibration.
 
+GET/POST /api/calibration/controls exposes rider.manual_settings v2 inside
+the negotiated rider.calibration v1 envelope. Data includes revision, values,
+directions, limits, parameter_schema and control_modes. Writes require the
+current revision and an idle executor, are atomic and never issue motion.
+
+Clients send device_settings=true, direction and settings_revision; Pi resolves
+vx/yaw/duration from the saved settings. Do not combine raw values with this
+mode. Include the bound panel_id when Pi advertises panel ownership.
+The executor rejects stale revisions and mismatched values. Ordinary writes
+do not activate an archive; named motion profiles belong to manual settings v2.
+
+The current panel duration range is 0.01–1.0 s, initially 0.25 s. The normalized
+magnitude ceiling is saved on Pi (supported up to 1.0); an existing file remains
+authoritative. Without saved settings, initial software ramp rates are 3 linear
+and 4 turn command units/s. These are not physical measurements.
+Turn mapping v3 uses 180 SDK units at normalized 1; v2 measurements cannot
+qualify v3. Reversal passes through zero without automatically disarming.
+
+[Intent and units](manual-motion.md) · [Calibration](../apps/calibration.md) ·
+[Panel ownership](../manual-panel-authority.md) · [Curves](../motion-curves.md).
 
 ## Face graphics — rider.face v1
 

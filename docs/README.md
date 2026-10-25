@@ -47,3 +47,19 @@ Polish is the starting point; keep English contracts and guides current.
 Local plans and reports exist only in `docs_pl/_to_do/` and `docs_pl/_done/`.
 
 - [Shared resources and robot goals](RESOURCE_ARCHITECTURE.md)
+
+## Control, vision and current contracts
+
+- [Manual intent and units](api-specs/manual-motion.md), [panel ownership](manual-panel-authority.md), [command curves](motion-curves.md).
+- [Conversation commands and prepared audio](apps/agent-control.md).
+- [Camera source OFF](apps/camera-source-off.md), [visual image reference](IMAGE_REFERENCE.md).
+- [Perception models](apps/perception-models.md), [profiles and SLOW](apps/navigation-profiles.md), [revision 2 policy parameters](vision-policy-parameters.md).
+- [Smoothing design decision](motion-smoothing-proposal.md).
+
+
+## Additional technical guides
+
+- [Full configuration and template reference](CONFIG.md).
+- [Posture parameters](MANUAL_POSTURE_PARAMETERS.md).
+- [Extended telemetry](EXTENDED-TELEMETRY.md), [system sampling](system-sampling.md).
+- [Gemini integration details](integracja-google-gemini.md).

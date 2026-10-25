@@ -10,7 +10,8 @@ odświeżanie oraz potwierdzanie żądań.
 | /control | Jeden katalog zadań, jawna zgoda na ruch, żądania i ACK |
 | /devices | Kamera, audio, LCD, UART, właściciele i konsumenci; obraz na życzenie |
 | /system | Odczyt usług; jawna administracja i osobna zmiana autostartu |
-| /navigation | Aktualność mapy/pozycji/planu, żądania nawigacji i konfiguracja w DISARMED |
+| /calibration | Wspólne nastawy kierunków, krzywe, profile i ręczne próby |
+| /navigation | Aktualność mapy/pozycji/planu, jawne próby/podróże, konfiguracja polityki w bezruchu i osobne referencje obrazu |
 | /chat | Tekst i opcjonalne TTS; potrzebna domena przygotowywana dopiero przy wysłaniu |
 
 Menu obsługuje język polski i angielski. Język oraz motyw są lokalnymi

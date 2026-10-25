@@ -1,132 +1,64 @@
-# Rider-Pi REST API Documentation
+# HTTP API Rider-Pi
 
-[Jednolity standard kontraktów Pi/PC](contracts.md) — Nowy klient negocjuje kopertę v1 nagłówkiem Accept; przykłady bez negocjacji opisują projekcję legacy. Czas odbioru nie zastępuje czasu pomiaru.
+[Jednolity kontrakt Pi/PC](contracts.md) opisuje negocjowane koperty v1.
+Przykłady bez negocjacji dotyczą projekcji legacy. Wersja koperty, schemat danych,
+rewizja nastaw i generacja poleceń są odrębnymi wartościami.
 
+Główna usługa to rider-api.service, punkt wejścia
+[services/api_server.py](../../services/api_server.py), port 8080.
+[Granica HTTP](security.md) działa przed handlerami: przeglądarka korzysta
+z własnego originu, dodatkowe wymagają RIDER_ALLOWED_ORIGINS. Zaufanie hosta
+nie zastępuje uwierzytelniania. Obce originy są odrzucane także dla OPTIONS.
+Niepuste mutacje wymagają JSON poza opisanymi wyjątkami uploadu binarnego.
+Nie ma nieograniczonego CORS z wildcardem.
 
-This directory contains documentation for the Rider-Pi REST API endpoints.
+## Interfejsy
 
-## API Server
+| Obszar | Endpointy lub przewodnik |
+| --- | --- |
+| Zdrowie i stan | GET /healthz, /api/status, /api/safety, /api/control/state, /api/status/version |
+| Ruch i bezpieczeństwo | [Sterowanie](control.md), [zamiar ręczny i deskryptory](manual-motion.md), [własność panelu](../manual-panel-authority.md) |
+| Kalibracja | GET/POST /api/calibration/controls; [nastawy i profile](../apps/calibration.md) |
+| Lokalna nawigacja | /api/navigator/*; [navigator](navigator.md), osobny od pętli Venoma |
+| Nawigacja Venoma | /api/navigation/config, /status, /trial, /journey; [kontrakt kierunkowy](../DIRECTIONAL_NAVIGATION.md), [podróż](../AUTOMAT2_JOURNEY_V1.md) |
+| Profile i wybór modelu | /api/navigation/models, /local-models, /model, /model-selection; [modele](../apps/perception-models.md), [parametry polityki](../vision-policy-parameters.md) |
+| Pomoc pomiarowa | GET/POST /api/navigation/image-reference; [osobna referencja obrazu](../IMAGE_REFERENCE.md) |
+| Źródło kamery | /api/resource/camera/pipeline; [pipeline](../CAMERA_PIPELINE_V1.md), [wyłączenie źródła](../apps/camera-source-off.md) |
+| Zdalne obliczenia | /api/compute/config, /status, /tasks/<task>; [parowanie Venoma](../COMPUTE_VENOM.md), [kontrakt providera](../OFFLOAD_PROVIDER_PROTOCOL.md) |
+| Impuls agenta i gotowy dźwięk | /api/control/agent/state, /pulse, /api/voice/playback, /cancel; [kontrakt prywatnego Bearer](../apps/agent-control.md) |
+| Zadania i zasoby operatora | [Sterowanie operatora](../OPERATOR_CONTROL_V1.md), [zasoby](../ARCHITEKTURA_ZASOBOW.md) |
 
-The API server runs on port **8080** and provides REST endpoints for controlling the robot and accessing system information.
+Wiersze ze wspólnym prefiksem skracają pełne nazwy tras; nie tworzą nowych
+endpointów w korzeniu. Odczyt GET nie przyznaje uprawnienia ruchu.
+POST trial/journey to jawne działania, a nie pasywny odczyt.
+Rejestracja tras jest rozdzielona między moduły api_core. Dostępność zależy
+od ogłoszonych funkcji i aktualnego stanu wykonawcy.
 
-**Service:** `rider-api.service`  
-**Entry point:** `services/api_server.py`  
-**Base URL:** `http://robot-ip:8080`
+## Metryki aplikacji
 
-## Available Endpoints
+GET /api/app-metrics zwraca liczniki interaktywnych endpointów: metrics według
+control, navigator, voice, google_home, chat i face oraz total_errors.
+Każda grupa ma ok/error. Liczniki nie potwierdzają wykonania fizycznego,
+gotowości ani bezpieczeństwa i nie zastępują świeżego stanu wykonawcy.
 
-### Core APIs
-- [Control API](control.md) - Robot movement and control
-- [Navigator API](navigator.md) - Autonomous navigation (Rekonesans mode)
+## Odpowiedzi i czas
 
-### Health and Status
-- `GET /healthz` - System health check
-- `GET /api/status` - Detailed system status
-- `GET /api/app-metrics` - Application metrics (OK/Error counts for interactive APIs)
+Nowe klienty używają negocjowanego kontraktu. Starsze kształty JSON zależą
+od endpointu; nie zakładaj jednej uniwersalnej struktury {ok,data}.
+Potwierdzenie operacji odróżnia zapis konfiguracji, działanie zadania i przyjęcie
+przez SDK. ACK SDK nie potwierdza fizycznego wykonania.
 
-## Application Metrics
+server_time pomaga uzgodnić czas polecenia. observed_at i czas capture opisują
+rzeczywisty pomiar; odbiór HTTP nie zastępuje tych wartości.
+Czas monotoniczny należy do domeny zegara danego procesu/hosta.
 
-### GET /api/app-metrics
+## Media, pliki i BUS
 
-Returns metrics for interactive API endpoints, tracking successful (OK) and failed (Error) requests.
+API serwuje [strony operatora](../ui/README.md). Zarządzane klatki i strumienie
+zachowują tożsamość źródła i świeżość; statyczny JPEG nie potwierdza żywego
+producenta. Pliki są ograniczone do skonfigurowanych katalogów.
+[Ograniczenia HTTP i plików](security.md).
 
-**No authentication required.**
-
-**Request:**
-```bash
-GET /api/app-metrics
-```
-
-**Response:**
-```json
-{
-  "ok": true,
-  "metrics": {
-    "control": {
-      "ok": 42,
-      "error": 3
-    },
-    "navigator": {
-      "ok": 15,
-      "error": 0
-    },
-    "voice": {
-      "ok": 28,
-      "error": 2
-    },
-    "google_home": {
-      "ok": 10,
-      "error": 1
-    },
-    "chat": {
-      "ok": 5,
-      "error": 0
-    },
-    "face": {
-      "ok": 12,
-      "error": 0
-    }
-  },
-  "total_errors": 6
-}
-```
-
-**Monitored API Groups:**
-
-- **Control:** `/api/control`, `/api/cmd`, `/api/control/balance`, `/api/control/height`
-- **Navigator:** `/api/navigator/start`, `/api/navigator/stop`, `/api/navigator/config`, `/api/navigator/return_home`
-- **Voice:** `/api/voice/capture`, `/api/voice/say`, `/api/voice/tts`, `/api/voice/asr`
-- **GoogleHome:** `/api/home/command`
-- **Chat:** `/api/chat/send`
-- **Face:** `/face/render`, `/face/play`, `/face/stop`, `/api/draw/face`
-
-**Note:** System endpoints (health checks, status queries, camera streams, etc.) are **not** counted in these metrics. Only user-initiated interactive actions are tracked.
-
-**Displayed on:** Main dashboard at `/view` in the "API Metrics" card.
-
-## Common Patterns
-
-### CORS Support
-All API endpoints support CORS (Cross-Origin Resource Sharing) and respond to OPTIONS preflight requests.
-
-### Response Format
-Most endpoints return JSON responses:
-
-```json
-{
-  "ok": true,
-  "data": { ... }
-}
-```
-
-Error responses:
-
-```json
-{
-  "ok": false,
-  "error": "Error message"
-}
-```
-
-### Timestamps
-All events and commands include a `ts` (timestamp) field in Unix epoch format (seconds since 1970-01-01).
-
-## Static File Serving
-
-The API server also serves static files:
-
-- `/` - Serves files from `web/` directory
-- `/camera/last` - Last captured camera frame
-- `/files/*` - Files from `data/` and `snapshots/`
-
-## Integration with Bus
-
-Many API endpoints publish commands to the internal ZMQ message bus. See `common/bus.py` for topic definitions and payload formats.
-
-## See Also
-
-- [ARCHITECTURE.md](../ARCHITECTURE.md) - Overall system architecture
-- [common/bus.py](../../common/bus.py) - Bus topic definitions
-- [services/api_server.py](../../services/api_server.py) - API server implementation
-
-- [Granica HTTP i bezpieczny eksport PNG](security.md) — Origin/CORS, typy treści i reason providerów.
+Handlery mogą publikować na ZMQ przez [common/bus.py](../../common/bus.py).
+Sama publikacja nie jest terminalnym ACK. [Wykonanie ruchu](../apps/motion.md)
+pozostaje na Pi; wykonawca sprawdza generację, sekwencję, TTL, owner i rewizję.

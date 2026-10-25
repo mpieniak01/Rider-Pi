@@ -238,7 +238,7 @@ ruff format
 ## 13) Migration Notes — Face LCD Fast-path (2025-09)
 
 - Removed dependencies on `_apps/ui/face_renderers.py`.
-- LCD Driver: `apps/ui/face/driver_ili9xx.py` (mock in CI + SPI in runtime).
+- LCD Driver: `drivers/lcd/driver_ili9xx.py` (mock in CI + SPI in runtime).
 - Fast-path RAW RGB565; mock saves PNG/565/meta.
 - Panel/rotation config: `apps/ui/face/panel_cfg.py`; I/O: `apps/ui/face/face_io.py`.
 - CLI: `scripts/dev_face-lcd-direct.py` and `scripts/dev_face-cli.py`.
