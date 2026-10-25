@@ -155,6 +155,7 @@ def _require_model_tuning(status, version):
 
 
 def _require_input_region(status, version):
+    """Reject hosts that cannot apply the exact versioned input-region contract."""
     if version is not None and (
         type(version) is not int
         or version != 1
@@ -187,6 +188,7 @@ def prepare_stream(
     model_tuning_version=None,
     input_region_version=None,
 ):
+    """Prepare the selected source and verify policy capabilities within one deadline."""
     streaming = native()
     if (
         not streaming
@@ -248,6 +250,7 @@ def _prepare_native_stream(
     model_tuning_version=None,
     input_region_version=None,
 ):
+    """Poll a matching native source while checking the current host capabilities."""
     while clock() < deadline:
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)

@@ -209,3 +209,33 @@ def test_approval_adoption_finishes_before_warm_reuse_without_stopping_healthy_s
     assert not any(action == "stop" for _, action in world.actions)
     assert not any("venom-navigation.service" in unit for unit, _ in world.actions)
     assert len([row for row in world.commands if row["action"] == "arm"]) == 1
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_warm_reuse_checks_input_region_before_arm(journey, monkeypatch, supported):
+    """A warm producer cannot bypass a missing crop capability on the host."""
+    from apps.compute.client import ComputeError
+    from apps.compute.stream_prepare import _require_input_region
+
+    world, starter, body = prepare_warm(journey, monkeypatch)
+    config = navigation_config.snapshot()
+    config["perception"]["input_region"] = {"version": 1, "bounds": [0.0, 0.4, 1.0, 1.0]}
+    world.config_path.write_text(json.dumps(config))
+    calls = []
+
+    def prepare(**kwargs):
+        """Simulate host capability validation without acquiring a physical stream."""
+        calls.append(kwargs)
+        _require_input_region({"input_region_version": 1} if supported else {}, kwargs.get("input_region_version"))
+        return {"latest_source": SOURCE}
+
+    monkeypatch.setattr(stream_prepare, "prepare_stream", prepare)
+    if supported:
+        result = starter.start(body)
+        assert result["preparation"]["warm_reused"] is True
+    else:
+        with pytest.raises(TrialError, match="navigation_input_region_update_required"):
+            starter.start(body)
+        assert not any(row["action"] == "arm" for row in world.commands)
+    assert len(calls) == 1
+    assert calls[0]["input_region_version"] == calls[0]["journey_version"] == 1

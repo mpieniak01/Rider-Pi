@@ -552,6 +552,7 @@ class NavigationRunner(NavigationCycle):
         # A second preflight here only delays the next capture and decision.
 
     def _start_run(self):
+        """Admit a fresh run after negotiating every capability required by its policy."""
         from apps.compute.stream_prepare import prepare_stream
 
         prepared = prepare_stream(

@@ -6,6 +6,7 @@ from services import navigation_config
 
 
 def _present_config(config):
+    """Expose supported configuration contracts without persisting capability flags."""
     from services.camera_pipeline_store import snapshot as camera_configuration
     from services.navigation_profiles import catalog
     from services.perception_tuning import presentation

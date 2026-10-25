@@ -80,6 +80,7 @@ def _validate_command_policy(data):
 
 
 def _validated_perception(perception):
+    """Validate perception settings while retaining optional versioned input bounds."""
     required = set(DEFAULT["perception"])
     if (
         not isinstance(perception, dict)
@@ -209,6 +210,7 @@ def _validate_calibration(data):
 
 
 def validate(data):
+    """Validate the complete device-owned navigation policy before persistence."""
     if isinstance(data, dict) and "behavior" not in data:
         data = {**data, "behavior": dict(DEFAULT_BEHAVIOR)}
     _validate_configuration_metadata(data)

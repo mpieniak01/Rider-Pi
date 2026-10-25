@@ -156,11 +156,11 @@ def select(body):
         result = copy.deepcopy(current)
         result["perception"].update({key: body[key] for key in ("engine", "model_id", "artifact_sha256")})
         if body["model_id"] == "depth-anything-v2-indoor-small":
-            from services.model_input import RECOMMENDED
+            from services.model_input import default_input_region
 
             avoidance = result.get("avoidance", {})
             if not (avoidance.get("enabled") and avoidance.get("geometry", {}).get("mode") == "ground"):
-                result["perception"].setdefault("input_region", copy.deepcopy(RECOMMENDED))
+                result["perception"].setdefault("input_region", default_input_region(result["corridor"]))
         else:
             result["perception"].pop("input_region", None)
         result["revision"] += 1

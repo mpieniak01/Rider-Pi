@@ -7,6 +7,7 @@ RECOMMENDED = {"version": 1, "bounds": [0.0, 0.4, 1.0, 1.0]}
 
 
 def validate_input_region(value):
+    """Reject malformed or non-finite versioned source-space input bounds."""
     if (
         not isinstance(value, dict)
         or set(value) != {"version", "bounds"}
@@ -24,6 +25,7 @@ def validate_input_region(value):
 
 
 def validate_input_policy(config):
+    """Keep the DA2 crop compatible with the floor reference and geometry."""
     perception = config["perception"]
     value = perception.get("input_region")
     if value is None:
@@ -45,3 +47,11 @@ def validate_input_policy(config):
         and value["bounds"] != [0, 0, 1, 1]
     ):
         raise ValueError("navigation_input_region_requires_image_geometry")
+
+
+def default_input_region(corridor):
+    """Prefer lower context only when it covers the existing floor reference."""
+    _x0, y0, _x1, y1 = corridor
+    top = min(y0, max(0.0, round(y1 - 0.30, 12)))
+    bounds = RECOMMENDED["bounds"] if RECOMMENDED["bounds"][1] <= top else [0.0, 0.0, 1.0, 1.0]
+    return {"version": 1, "bounds": list(bounds)}
