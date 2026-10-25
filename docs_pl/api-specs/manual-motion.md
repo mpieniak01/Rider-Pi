@@ -75,3 +75,8 @@ czytającym opisy. Nowa funkcja/typ parametru może wymagać nowego widoku.
 
 Testy celowe używają tylko atrapy wykonawcy i przeglądarki WSL.
 Fizyczne próby ruchu wymagają osobnej zgody operatora.
+
+Obecny zakres czasu panelu: 0.01–1.0 s; początkowy impuls 0.25 s.
+Odczytuj aktualny parameter_schema zamiast utrwalać granice w kliencie.
+Przy ogłoszonej własności panelu polecenia zawierają też związany panel_id.
+[Własność panelu](../manual-panel-authority.md) · [Krzywe](../motion-curves.md).

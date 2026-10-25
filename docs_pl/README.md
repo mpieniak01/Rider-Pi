@@ -47,3 +47,19 @@ Wersja polska jest punktem wyjścia; aktualizujemy też instrukcje EN.
 Lokalne plany i raporty utrzymujemy tylko w `docs_pl/_to_do/` i `docs_pl/_done/`.
 
 - [Wspólna obsługa zasobów i celów](ARCHITEKTURA_ZASOBOW.md)
+
+## Sterowanie, obraz i aktualne kontrakty
+
+- [Zamiar ręczny i jednostki](api-specs/manual-motion.md), [własność panelu](manual-panel-authority.md), [krzywe polecenia](motion-curves.md).
+- [Polecenia z rozmowy i gotowy dźwięk](apps/agent-control.md).
+- [Wyłączenie źródła kamery](apps/camera-source-off.md), [referencja obrazu](IMAGE_REFERENCE.md).
+- [Modele percepcji](apps/perception-models.md), [profile i SLOW](apps/navigation-profiles.md), [parametry polityki r2](vision-policy-parameters.md).
+- [Decyzja o wygładzaniu](motion-smoothing-proposal.md).
+
+
+## Pozostałe przewodniki techniczne
+
+- [Pełny przegląd konfiguracji i wzorów](CONFIG.md).
+- [Parametry postawy](PARAMETRY_POSTAWY.md).
+- [Rozszerzona telemetria](EXTENDED-TELEMETRY.md), [próbkowanie systemu](system-sampling.md).
+- [Szczegóły integracji Gemini](integracja-google-gemini.md).

@@ -1,5 +1,10 @@
 # Navigator Module — Autonomous Rekonesans (Reconnaissance) Mode
 
+Opis dotyczy eksperymentalnego lokalnego navigatora, osobnego od pętli Venoma.
+Start i return_home wymagają aktualnej zgody wykonawcy i kwalifikacji przejazdu;
+HTTP 202 oznacza pending, nie wykonanie. Mapa/A* nie kwalifikują samodzielnie
+bezpiecznego powrotu. [Aktualna brama ruchu](motion.md).
+
 ## Overview
 
 The Navigator module implements the **Rekonesans (Reconnaissance) Epic** for autonomous exploration and navigation. It provides:

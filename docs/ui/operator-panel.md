@@ -63,16 +63,18 @@ state, UNKNOWN, wrong owner, expired permission or unverified actuator
 rules. ARM also requires hardware_ready and ready. Clearing ESTOP returns to DISARMED.
 
 ARM needs a specific plan, confirmation that the robot is prepared, a selected
-owner and a lease of at most 30 seconds. Opening a view or reconnecting never
+owner. Manual panel ARM uses arming_mode=operator without a timer; timed
+test/navigation sessions keep their bounded lease. Opening a view or reconnecting never
 automatically arms. With wired power, the operator must provide clear space
 and secure the cable. Navigation and System provide the same explicit
-preparation form in their safety card; leaving the current view revokes
-permission rather than carrying it into another view.
+preparation controls for their task context. Changing views does not disarm
+the manual operator session; a held gesture ends on release/focus/page loss.
+A new page must read fresh state and respect the bound panel identity.
 
 Every actuator, ARM or clear request creates one envelope: `request_id`,
 `generation`, increasing `seq`, `source`, `ts`, `ttl_ms <= 500`. Mutations are
 never automatically retried or given refreshed metadata. A manual pulse is
-at most 0.25 seconds.
+resolved from Pi settings, currently 0.01–1.0 s (default 0.25 s).
 
 The API's `server_time` is separate from measurement `observed_at`. The panel
 aligns its clock during safety reads: command time uses the lower network
@@ -92,19 +94,19 @@ sending text: the matching domain must report fresh `ready`. Producer errors
 remain visible in task cards and details; echo and fallback audio do not
 confirm working AI/TTS.
 
-Height, balance and prebuilt actions remain visible.
-`manual_characterization_required` explicitly blocks invocation until manual
-work establishes safe interruption. Parameter fields are proposed requests,
-not measured robot posture.
+Height and roll balance use advertised position/mode capabilities and global
+operator ARM. stop_verified=false does not establish physical cancellation.
+Manufacturer figures remain blocked pending interruption characterization.
+Values describe last accepted commands, not measured posture.
 
-STOP is always available and needs no safety metadata. W/S/A/D and arrows
-operate only in Control, outside editing fields, without key repetition,
-with fresh permission for owner `manual`. Space sends STOP outside fields.
-Connection loss, focus loss or hiding the tab suspends local motion control
-and attempts STOP. A lost connection never produces a claim of confirmed
-physical stopping.
-A locally revoked generation cannot regain permission by reading the same
-ARMED state again: STOP and explicit new arming are required.
+STOP is always available without a safety envelope. W/S/A/D and arrows work
+in Control and Calibration outside editing fields, without key repetition,
+with fresh manual permission. Space outside fields sends STOP.
+Release, focus loss and a hidden page end hold. For operator/manual/panel this
+does not automatically disarm; Pi's watchdog bounds missing renewals.
+Other timed sessions retain their revocation rules. Lost connectivity does not
+confirm physical stopping. A new page respects [panel ownership](../manual-panel-authority.md);
+taking over a different panel_id requires STOP, a fresh generation and explicit ARM.
 
 ## Devices and resource use
 

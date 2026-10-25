@@ -23,7 +23,7 @@ intent z katalogu; stary controller nie przejmuje zgody nowej generacji.
 | Stan | Znaczenie |
 | --- | --- |
 | DISARMED | Odczyty, brak aktuacji; stan każdego startu |
-| ARMED | Konkretny plan, owner i lease do 30 s |
+| ARMED | Jawny plan i owner; panel operatora bez timera, testy/nawigacja z ograniczonym lease |
 | ESTOP | Zatrzaśnięta blokada; osobny clear pozostawia DISARMED |
 | UNKNOWN | Brak świeżego snapshotu; klient blokuje sterowanie |
 
@@ -31,7 +31,9 @@ ARM/clear wymagają operator_consent=true, niepustego operator_plan i oryginalne
 koperty. Owner: manual/follow_me/navigation. Aktuatory wymagają request_id,
 source, generation, rosnącego seq, ts oraz ttl_ms 1–500. API i wykonawca
 walidują niezależnie. Klient korzysta z server_time API; nie odświeża starego
-żądania. Jazda/obrót: [-1,1], impuls do 0,25 s. STOP/disarm/E-Stop nie wymagają
+żądania. Jazda/obrót: [-1,1]. Impuls panelu z device_settings korzysta z
+deskryptora (0.01–1.0 s); polecenia ogólne/testowe mają osobne ograniczenia.
+STOP/disarm/E-Stop nie wymagają
 świeżej koperty. STOP zmienia generację i usuwa cel. Nowszy cel zastępuje pending
 z terminalnym ACK; polecenia nie wracają po ARM.
 
@@ -65,8 +67,9 @@ Regulator ma dt, rampę i termin krótkiego celu. Safety STOP zeruje cel natychm
 Znormalizowane wartości nie mierzą m/s ani drogi hamowania.
 Awaria UART/SDK lub niepotwierdzony STOP blokuje readiness i nowy ARM; potrzebny
 jest nowy sprawny wykonawca. SDK źródłowo potwierdza zerowanie prędkości.
-Height/balance/canned actions pozostają niedostępne do ręcznej charakterystyki
-bezpiecznego przerwania. SIGTERM uruchamia cleanup; SIGKILL, utrata UART/zasilania
+Wysokość i balans korzystają z ogłoszonych możliwości pozycji/trybu;
+stop_verified=false nie potwierdza fizycznego przerwania. Figury producenta
+pozostają zablokowane do charakterystyki przerwania. SIGTERM uruchamia cleanup; SIGKILL, utrata UART/zasilania
 Pi nie mają fizycznego dowodu STOP. Nie deklarujemy watchdoga firmware.
 
 ## Runtime i migracja

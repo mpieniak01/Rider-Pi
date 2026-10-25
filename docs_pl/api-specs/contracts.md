@@ -473,7 +473,8 @@ Zmiana suwaka, odczyt, zapis, zastosowanie lub powrót wersji nie uruchamiają r
 Nie ma automatycznego powtarzania ani sekwencji kalibracyjnej.
 
 Opcjonalny obiekt profilu interaction zapisuje linear_speed i turn_speed (0–1)
-oraz pulse_duration (0.01–0.25 s). Wykonawca udostępnia go w
+oraz pulse_duration (0.01–0.25 s w archiwalnym interaction). Bieżący panel
+korzysta z osobnych nastaw v2, opisanych niżej. Wykonawca udostępnia go w
 motion.calibration.interaction; Pi i PC odczytują te same ustawienia z Pi.
 Parametry nie stanowią zgody na ruch. Stare profile bez tego obiektu pozostają czytelne.
 Rampa i pułap polecenia zachowują dotychczasowy format motion i ograniczenia wykonawcy.
@@ -529,9 +530,28 @@ Ograniczony czasowo impuls z panelu zatrzymuje napęd po zakończeniu; uzbrojeni
 
 
 ## Wspólne ustawienia sterowania ręcznego
-GET/POST /api/calibration/controls udostępnia obiekt rider.manual_settings v1 zarządzany przez Pi: revision, values, limits, observed_at, actuation=false. values zawiera linear_speed, turn_speed, pulse_duration, speed_limit, linear_rate i turn_rate. POST przyjmuje revision i częściową zmianę values, zapisuje atomowo, wymaga bezczynnego wykonawcy i nie wysyła polecenia napędu. Nieaktualne zapisy zwracają 409.
-Widoki sterowania i kalibracji Pi oraz PC odczytują ten sam obiekt i blokują ruch podczas zapisu zmian oraz przy braku lub nieaktualności danych. Każde polecenie ruchu operatora zawiera direction i settings_revision oraz dokładne wspólne vx/yaw/duration. Wykonawca odrzuca stare rewizje i niespójne wartości. Otwarcie widoku, import szkicu i odczyt historycznego profilu nie zastępują bieżących ustawień. Jawna aktywacja zapisanego profilu aktualizuje wspólne ustawienia.
-Domyślny impuls trwa 0.25 s; rampy programowe wynoszą 3 dla jazdy i 4 dla skrętu w jednostkach znormalizowanych na sekundę. Zachowane ograniczenia prędkości i impulsu to 0.6 i 0.25 s. Mapowanie skrętu v3 używa 180 natywnych jednostek SDK przy wartości znormalizowanej 1; dawnych pomiarów fizycznych v2 nie można uznawać za zweryfikowane dane v3. Zmiana kierunku wysyła neutralne polecenie napędu przed rampą w nowym kierunku, bez rozbrajania panelu. To wartości programowe, a nie fizycznie zmierzona kalibracja.
+
+GET/POST /api/calibration/controls udostępnia rider.manual_settings v2 wewnątrz
+negocjowanej koperty rider.calibration v1. Dane zawierają revision, values,
+directions, limits, parameter_schema i control_modes. Zapis wymaga aktualnej
+rewizji oraz bezruchu, jest atomowy i nie wysyła ruchu.
+
+Klient przesyła device_settings=true, direction i settings_revision; Pi ustala
+vx/yaw/duration z zapisu. Nie łącz surowych wartości z tym trybem. Polecenia
+zawierają również związany panel_id, gdy Pi ogłasza własność panelu.
+Wykonawca odrzuca stare rewizje i niespójne wartości. Zwykły zapis nie zmienia
+profilu archiwalnego; nazwane profile ruchu są częścią nastaw ręcznych v2.
+
+Obecny zakres czasu panelu to 0.01–1.0 s, początkowy impuls 0.25 s.
+Limit znormalizowanej siły jest zapisany na Pi (obsługiwany do 1.0);
+istniejący plik pozostaje wiążący. Domyślne rampy bez zapisu to 3 dla jazdy
+i 4 dla skrętu w jednostkach polecenia/s. Nie są pomiarem fizycznym.
+Mapowanie skrętu v3 używa 180 jednostek SDK przy znormalizowanym 1.
+Nie używaj pomiarów v2 jako zweryfikowanych danych v3.
+Nawrot przechodzi przez zero bez automatycznego rozbrojenia panelu.
+
+[Zamiar ręczny i jednostki](manual-motion.md) · [Kalibracja](../apps/calibration.md) ·
+[Własność panelu](../manual-panel-authority.md) · [Krzywe](../motion-curves.md).
 
 ## Parametry i ciągłe sterowanie ręczne
 

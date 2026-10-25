@@ -1,30 +1,30 @@
-# Przebieg zmiany siły
+# Command magnitude curves
 
-Select na control i calibration: Liniowy / Łagodny S / Logarytmiczny.
-Wartość ramp_mode (0 / 1 / 2) w values jest zapisywana na Pi i w profilach.
-Lista opcji i etykiety pochodzą z parameter_schema.ramp_modes.
-Starsze ustawienia i profile bez pola przyjmują 0: bez zmiany zachowania.
-Zmiana wyboru jest szkicem do przycisku Zapisz ustawienia na robocie.
+Control and Calibration offer Linear / Smooth S / Logarithmic.
+`values.ramp_mode` (0/1/2) is stored on Pi and in named profiles.
+Options and labels come from `parameter_schema.ramp_modes`.
+Older settings/profiles without the field use 0, preserving behavior.
+Changing the selector remains a draft until Save settings on robot.
 
-Liniowy: stałe nachylenie.
-Łagodny S: wielomian 6x^5-15x^4+10x^3, łagodny początek i koniec.
-Logarytmiczny: log(1+4x)/log(5), największe nachylenie na początku.
-Każda krzywa wydłuża czas przejścia odpowiednio do swojego maksymalnego
-nachylenia, aby nie przekroczyć ograniczenia %/s.
-Przejście 0 -> 60% przy 50%/s: liniowe 1200 ms,
-S 2250 ms, logarytmiczne około 2982 ms.
-Siła docelowa, minimum, maksimum i krok nie są przeskalowywane.
+Linear has constant slope. Smooth S uses 6x^5−15x^4+10x^3 for gentle endpoints.
+Logarithmic uses log(1+4x)/log(5), with its highest slope at the start.
+Each curve extends transition time by its maximum slope factor to preserve
+the configured %/s limit. For 0 → 60% at 50%/s: linear 1200 ms, S 2250 ms,
+logarithmic approximately 2982 ms. Target, minimum, maximum and slider step
+are not rescaled.
 
-Odnowienie niezmienionego hold zachowuje postęp krzywej.
-Nowy cel rozpoczyna nową krzywą od bieżącej wartości; nachylenie może się zmienić.
-To wygładzanie polecenia, nie pełny regulator fizycznego jerk/przyspieszenia.
-Przy zmianie kierunku wyjście przechodzi przez zero.
-Impuls rezerwuje czas na zejście do zera; jego TTL nie jest przedłużany.
-STOP i watchdog omijają krzywą i zerują wyjście.
-Wyświetlane impuls ≤ jest wspólną górną granicą z limitów tempa,
-nie obietnicą osiągnięcia tej siły w każdym przebiegu.
-Krótki impuls z S może być zbyt mały, aby fizycznie poruszyć robotem.
+Renewing an unchanged hold preserves curve progress. A new goal replans from
+current output and can change slope; this is command smoothing, not a complete
+physical jerk/acceleration controller. Reversal passes through zero. A pulse
+reserves ramp-down time and never extends TTL. STOP and watchdog bypass curves
+and zero output immediately. Displayed pulse ≤ is a shared upper bound derived
+from rates, not a promise that every curve reaches it. A short S pulse may be
+too small to move the robot physically.
 
-Do wdrożenia potrzebny jest kontrolowany restart wykonawcy i API.
-Sniffer jest opcjonalny i po restarcie pozostaje bez aktywnego zapisu.
-Sprawdzenie fizycznej reakcji należy do oddzielnej sesji operatora.
+Implementation: [dynamics](../apps/motion/dynamics.py),
+[settings](../apps/motion/manual_settings.py);
+software checks: [curve tests](../tests/test_motion_curves.py).
+A code deployment affecting the executor/API needs scoped service handling;
+merely editing this guide does not. Sniffer recording remains optional and
+does not automatically resume after restart. Physical response needs separate
+operator acceptance. [Calibration](apps/calibration.md).

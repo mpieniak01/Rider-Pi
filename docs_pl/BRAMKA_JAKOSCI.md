@@ -118,3 +118,15 @@ pomocnicze dla spójnych etapów, z zachowaniem kolejności kontroli i CAS.
 Płynne przewijanie panelu jest aktywne tylko przy
 `prefers-reduced-motion: no-preference`; preferencja ograniczenia ruchu
 pozostawia przewijanie domyślne.
+
+## Regresje refaktoryzacji nawigacji
+
+Etapy cyklu życia i dopuszczania decyzji zachowują wspólny mutex, kolejność
+walidacji, STOP ograniczony generacją, oryginalne terminy i sprzątanie.
+Cel HTTP jest sprawdzany przed połączeniem; zamknięty transport odmawia jako
+pierwszy. Przygotowanie zachowuje jeden termin dla strumienia i snapshotu.
+Testy izolowane obejmują współbieżność, stare odpowiedzi, błędne cele, replay
+i brak capability. Dane do testu wyjątków powstają przed pytest.raises.
+Przykłady: tests/test_journey_lifecycle_concurrency.py,
+tests/test_journey_preflight.py, tests/test_navigation_journey.py,
+tests/test_navigation_transport.py, tests/test_sonar319_admission_boundaries.py.
