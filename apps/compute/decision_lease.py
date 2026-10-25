@@ -247,8 +247,7 @@ class DecisionLease:
             self._halt("navigation_model_observe_only")
             return False
         if perception.get("model_id") and (
-            not isinstance(decision, dict)
-            or decision.get("model_id") != perception["model_id"]
+            decision.get("model_id") != perception["model_id"]
             or decision.get("artifact_sha256") != perception.get("artifact_sha256")
         ):
             self._halt("navigation_model_identity_mismatch")
