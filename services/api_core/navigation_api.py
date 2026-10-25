@@ -181,7 +181,12 @@ def _model_response(action):
             "navigation_model_stop_loops_first",
         }
         unavailable = {"navigation_goal_state_unavailable"}
-        return jsonify({"error": code}), 503 if code in unavailable else 409 if code in conflict else 400
+        status = 400
+        if code in unavailable:
+            status = 503
+        elif code in conflict:
+            status = 409
+        return jsonify({"error": code}), status
     except OSError:
         return jsonify({"error": "navigation_model_unavailable"}), 503
 

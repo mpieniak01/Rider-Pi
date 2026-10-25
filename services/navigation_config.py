@@ -168,9 +168,7 @@ def _validate_avoidance_authority(data, perception, avoidance, geometry):
         raise ValueError("navigation_avoidance_not_accepted")
 
 
-def validate(data):
-    if isinstance(data, dict) and "behavior" not in data:
-        data = {**data, "behavior": dict(DEFAULT_BEHAVIOR)}
+def _validate_configuration_metadata(data):
     if not isinstance(data, dict) or set(data) != set(DEFAULT):
         raise ValueError("navigation_configuration_invalid")
     if (
@@ -186,20 +184,35 @@ def validate(data):
         or type(data["verified"]) is not bool
     ):
         raise ValueError("navigation_configuration_invalid")
-    validate_behavior(data["behavior"])
-    _validate_command_policy(data)
+
+
+def _validate_model_approval(data, perception):
+    if data["mode"] != "drive":
+        return
+    if not drive_supported(perception):
+        raise ValueError("navigation_model_observe_only")
+    if perception.get("model_id") and data["model_sha256"] != perception.get("artifact_sha256"):
+        raise ValueError("navigation_model_approval_mismatch")
+
+
+def _validate_calibration(data):
     if not isinstance(data["calibration_id"], str) or not re.fullmatch(r"[a-zA-Z0-9_-]{0,64}", data["calibration_id"]):
         raise ValueError("navigation_calibration_invalid")
     if not isinstance(data["model_sha256"], str) or not re.fullmatch(r"(?:[a-f0-9]{64})?", data["model_sha256"]):
         raise ValueError("navigation_model_invalid")
     if data["mode"] == "drive" and (not data["verified"] or not data["calibration_id"] or not data["model_sha256"]):
         raise ValueError("navigation_validation_required")
+
+
+def validate(data):
+    if isinstance(data, dict) and "behavior" not in data:
+        data = {**data, "behavior": dict(DEFAULT_BEHAVIOR)}
+    _validate_configuration_metadata(data)
+    validate_behavior(data["behavior"])
+    _validate_command_policy(data)
+    _validate_calibration(data)
     perception = _validated_perception(data["perception"])
-    if data["mode"] == "drive":
-        if not drive_supported(perception):
-            raise ValueError("navigation_model_observe_only")
-        if perception.get("model_id") and data["model_sha256"] != perception.get("artifact_sha256"):
-            raise ValueError("navigation_model_approval_mismatch")
+    _validate_model_approval(data, perception)
     avoidance = _validated_avoidance(data["avoidance"])
     geometry = _validated_geometry(avoidance["geometry"])
     _validate_avoidance_authority(data, perception, avoidance, geometry)
@@ -237,25 +250,70 @@ def configure(body):
         return configure_locked(body)
 
 
+def _requested_navigation_goals(state_path):
+    try:
+        if state_path.stat().st_size > 256 * 1024:
+            raise ValueError("oversized")
+        requested = json.loads(state_path.read_text()).get("requested", [])
+        if not isinstance(requested, list) or any(not isinstance(name, str) for name in requested):
+            raise ValueError("invalid")
+    except (ValueError, OSError, AttributeError) as exc:
+        raise ValueError("navigation_goal_state_unavailable") from exc
+    return set(requested) & {"s14_venom_navigation", "s15_venom_perception"}
+
+
 def _require_navigation_goals_stopped(*, approval_revision=None):
     state_path = Path(os.getenv("FEATURE_STATE_PATH", "/run/rider-motion/feature_state.json"))
-    if state_path.exists():
-        try:
-            if state_path.stat().st_size > 256 * 1024:
-                raise ValueError("oversized")
-            requested = json.loads(state_path.read_text()).get("requested", [])
-            if not isinstance(requested, list) or any(not isinstance(name, str) for name in requested):
-                raise ValueError("invalid")
-        except (ValueError, OSError, AttributeError) as exc:
-            raise ValueError("navigation_goal_state_unavailable") from exc
-        navigation_goals = set(requested) & {"s14_venom_navigation", "s15_venom_perception"}
-        if navigation_goals and approval_revision is not None:
-            from services.navigation_approval import passive_navigation_matches
+    if not state_path.exists():
+        return
+    navigation_goals = _requested_navigation_goals(state_path)
+    if navigation_goals and approval_revision is not None:
+        from services.navigation_approval import passive_navigation_matches
 
-            if "s14_venom_navigation" not in navigation_goals or passive_navigation_matches(approval_revision):
-                return
-        if navigation_goals:
-            raise ValueError("navigation_stop_goals_first")
+        if "s14_venom_navigation" not in navigation_goals or passive_navigation_matches(approval_revision):
+            return
+    if navigation_goals:
+        raise ValueError("navigation_stop_goals_first")
+
+
+def _require_configuration_goals_stopped(body, old, proposed):
+    from services.navigation_approval import approval_only
+
+    approving = body["values"].get("verified") is True and approval_only(old, proposed)
+    if approving:
+        _require_navigation_goals_stopped(approval_revision=old["revision"])
+    else:
+        if set(body["values"]) != {"mode"}:
+            _require_idle_goals()
+        _require_navigation_goals_stopped()
+
+
+def _apply_perception_changes(old, proposed):
+    # Model identities are committed by the host-coordinated endpoint only.
+    proposed_perception = proposed.get("perception")
+    _validated_perception(proposed_perception)
+    if identity(proposed_perception) != identity(old["perception"]):
+        raise ValueError("navigation_model_selection_required")
+    behavior = validate_behavior(proposed.get("behavior"))
+    profile_changed = behavior != old.get("behavior", DEFAULT_BEHAVIOR)
+    perception_changed = proposed_perception != old["perception"]
+    if profile_changed and behavior["profile_id"] != "legacy":
+        from services.camera_pipeline_store import snapshot as camera_configuration
+
+        if camera_configuration()["profile"]["analysis_location"] != "venom":
+            raise ValueError("navigation_profile_local_executor")
+    if profile_changed or perception_changed:
+        from services.navigation_behavior import require_stopped
+
+        require_stopped()
+    tuning_changed = proposed_perception.get("semantic_models", {}) != old["perception"].get("semantic_models", {})
+    if profile_changed or tuning_changed:
+        proposed.update(mode="observe", verified=False, calibration_id="", model_sha256="")
+        proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
+    engine_changed = proposed_perception["engine"] != old["perception"]["engine"]
+    if engine_changed and proposed_perception.get("model_id"):
+        raise ValueError("navigation_model_selection_required")
+    return engine_changed
 
 
 def configure_locked(body):
@@ -283,39 +341,8 @@ def configure_locked(body):
         # Mode switches do not change compute selection or model parameters.
         # Unrelated voice/compute consumers can continue using their own policy.
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
-        from services.navigation_approval import approval_only
-
-        approving = body["values"].get("verified") is True and approval_only(old, proposed)
-        if approving:
-            _require_navigation_goals_stopped(approval_revision=old["revision"])
-        else:
-            if set(body["values"]) != {"mode"}:
-                _require_idle_goals()
-            _require_navigation_goals_stopped()
-        # Model identities are committed by the host-coordinated endpoint only.
-        proposed_perception = proposed.get("perception")
-        _validated_perception(proposed_perception)
-        if identity(proposed_perception) != identity(old["perception"]):
-            raise ValueError("navigation_model_selection_required")
-        behavior = validate_behavior(proposed.get("behavior"))
-        profile_changed = behavior != old.get("behavior", DEFAULT_BEHAVIOR)
-        perception_changed = proposed_perception != old["perception"]
-        if profile_changed and behavior["profile_id"] != "legacy":
-            from services.camera_pipeline_store import snapshot as camera_configuration
-
-            if camera_configuration()["profile"]["analysis_location"] != "venom":
-                raise ValueError("navigation_profile_local_executor")
-        if profile_changed or perception_changed:
-            from services.navigation_behavior import require_stopped
-
-            require_stopped()
-        tuning_changed = proposed_perception.get("semantic_models", {}) != old["perception"].get("semantic_models", {})
-        if profile_changed or tuning_changed:
-            proposed.update(mode="observe", verified=False, calibration_id="", model_sha256="")
-            proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
-        engine_changed = proposed_perception["engine"] != old["perception"]["engine"]
-        if engine_changed and proposed_perception.get("model_id"):
-            raise ValueError("navigation_model_selection_required")
+        _require_configuration_goals_stopped(body, old, proposed)
+        engine_changed = _apply_perception_changes(old, proposed)
         changed = any(
             proposed[k] != old[k]
             for k in (
@@ -340,9 +367,6 @@ def configure_locked(body):
 
             require_idle()
             _reset_approval(proposed)
-            data = validate(proposed)
-            _write(path(), data)
-        else:
-            data = validate(proposed)
-            _write(path(), data)
+        data = validate(proposed)
+        _write(path(), data)
     return data

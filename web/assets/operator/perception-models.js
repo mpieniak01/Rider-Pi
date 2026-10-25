@@ -77,8 +77,9 @@ export class PerceptionModels {
       row.selectable === true && row.installation === 'ready',
     ]), this.drafts.model?.value || selected);
     const runtime = this.host?.diagnostics?.runtime;
-    const active = local ? this.local?.active_model_id
-      : runtime?.state === 'active' ? runtime.active_model_id : null;
+    let active = null;
+    if (local) active = this.local?.active_model_id;
+    else if (runtime?.state === 'active') active = runtime.active_model_id;
     text('perception-selected', tr('Wybrany: ', 'Selected: ') + (selected || tr('profil historyczny', 'legacy profile')));
     text('perception-active', tr('Aktywny: ', 'Active: ') + (active || tr('brak potwierdzonego wyniku', 'no confirmed result')));
     text('perception-state', provider ? provider + ' · r' + this.pipeline.revision : tr('Stan nieznany', 'Unknown state'));
@@ -149,7 +150,7 @@ export class PerceptionModels {
     if (!draft) return;
     const id = draft.value;
     const row = this.modelRows()?.find(item => item.id === id);
-    if (!row || row.selectable !== true || row.installation !== 'ready' || !this.policy) return;
+    if (row?.selectable !== true || row.installation !== 'ready' || !this.policy) return;
     await this.mutate(async () => {
       if (this.pipeline.profile.analysis_location === 'local') {
         await this.configureProfile({ ...this.pipeline.profile, local_engine: row.engine }, draft.pipelineRevision);

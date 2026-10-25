@@ -97,6 +97,32 @@ export class NavigationProfiles {
     if (this.status?.running === true) return 'behavior.block.observation';
     return this.busy ? 'behavior.block.busy' : '';
   }
+  renderSelect(catalog, selected) {
+    const select = document.getElementById('navigation-profile');
+    if (!select) return;
+    const rows = catalog.supported ? catalog.profiles : ids.map(id => ({ id }));
+    const choices = JSON.stringify([rows.map(item => [item.id, item.status]), selected, document.documentElement.lang]);
+    if (select.dataset.choices !== choices && document.activeElement !== select) {
+      select.dataset.choices = choices;
+      select.replaceChildren(...rows.map(item => {
+        const option = document.createElement('option'); option.value = item.id;
+        option.textContent = t('behavior.profile.' + item.id) + (item.status === 'experimental' ? ' · ' + t('behavior.experimental') : '');
+        option.selected = selected === item.id; option.disabled = !catalog.supported; return option;
+      }));
+    }
+    select.disabled = !catalog.supported || this.busy;
+  }
+  message(block) {
+    if (this.error || block) return t(this.error || block, { model: this.pipeline?.profile?.local_engine || '—' });
+    if (this.saved === this.policy?.revision) return t('behavior.saved', { revision: this.saved });
+    return '';
+  }
+  renderActions(catalog, block) {
+    const apply = document.getElementById('navigation-profile-apply'), refresh = document.getElementById('navigation-profile-refresh');
+    const changed = this.draft && !sameSelection(this.draft.selection, catalog.active);
+    if (apply) { apply.textContent = t(this.busy ? 'behavior.saving' : 'behavior.apply'); apply.title = t('behavior.applyHint'); apply.disabled = !changed || !!block; }
+    if (refresh) { refresh.textContent = t(this.draft ? 'behavior.discard' : 'behavior.refresh'); refresh.disabled = this.busy; }
+  }
   render() {
     for (const [id, key] of [
       ['navigation-profile-title', 'behavior.title'], ['navigation-profile-hint', 'behavior.hint'],
@@ -104,19 +130,8 @@ export class NavigationProfiles {
       ['navigation-temporal-title', 'temporal.title'],
     ]) text(id, t(key));
     const catalog = profileCatalog(this.policy), selected = this.draft?.selection.profile_id || catalog.active.profile_id;
-    const row = catalog.profiles.find(item => item.id === selected), select = document.getElementById('navigation-profile');
-    if (select) {
-      const choices = JSON.stringify([(catalog.supported ? catalog.profiles : ids.map(id => ({ id }))).map(item => [item.id, item.status]), selected, document.documentElement.lang]);
-      if (select.dataset.choices !== choices && document.activeElement !== select) {
-        select.dataset.choices = choices;
-        select.replaceChildren(...(catalog.supported ? catalog.profiles : ids.map(id => ({ id }))).map(item => {
-          const option = document.createElement('option'); option.value = item.id;
-          option.textContent = t('behavior.profile.' + item.id) + (item.status === 'experimental' ? ' · ' + t('behavior.experimental') : '');
-          option.selected = selected === item.id; option.disabled = !catalog.supported; return option;
-        }));
-      }
-      select.disabled = !catalog.supported || this.busy;
-    }
+    const row = catalog.profiles.find(item => item.id === selected);
+    this.renderSelect(catalog, selected);
     text('navigation-profile-current', t('behavior.current', { profile: profileLabel(catalog.active), revision: this.policy?.revision ?? '—' }));
     text('navigation-profile-draft', this.draft ? t('behavior.draft', { profile: t('behavior.profile.' + selected) }) : '');
     text('navigation-profile-description', t('behavior.description.' + selected));
@@ -127,12 +142,18 @@ export class NavigationProfiles {
     text('navigation-profile-parameters', catalog.supported ? JSON.stringify(displayedParameters, null, 2) : '');
     text('navigation-profile-hash', catalog.supported ? t('behavior.effectiveHash') + ': ' + catalog.effective_policy_sha256 : '');
     const block = this.blocked();
-    text('navigation-profile-message', this.error || block ? t(this.error || block, { model: this.pipeline?.profile?.local_engine || '—' }) : this.saved === this.policy?.revision ? t('behavior.saved', { revision: this.saved }) : '');
-    const apply = document.getElementById('navigation-profile-apply'), refresh = document.getElementById('navigation-profile-refresh');
-    const changed = this.draft && !sameSelection(this.draft.selection, catalog.active);
-    if (apply) { apply.textContent = t(this.busy ? 'behavior.saving' : 'behavior.apply'); apply.title = t('behavior.applyHint'); apply.disabled = !changed || !!block; }
-    if (refresh) { refresh.textContent = t(this.draft ? 'behavior.discard' : 'behavior.refresh'); refresh.disabled = this.busy; }
+    text('navigation-profile-message', this.message(block));
+    this.renderActions(catalog, block);
     this.renderTemporal();
+  }
+  temporalReason(temporal) {
+    if (!temporal.reason) return t('temporal.noReason');
+    const key = 'vision.reason.' + temporal.reason, reason = t(key);
+    return reason === key ? temporal.reason : reason;
+  }
+  nearGuardLabel(value) {
+    if (typeof value !== 'boolean') return t('temporal.unknown');
+    return t(value ? 'temporal.yes' : 'temporal.no');
   }
   renderTemporal() {
     const decision = this.status?.decision, temporal = decision?.temporal;
@@ -140,17 +161,15 @@ export class NavigationProfiles {
       text('navigation-temporal-state', t('temporal.none')); return;
     }
     const profile = decision.behavior, current = this.status.running === true && this.status.stale !== true;
-    const reasonKey = "vision.reason." + (temporal.reason || "");
-    const reason = t(reasonKey);
     const rows = [
       current ? '' : t('temporal.historical'),
       t('temporal.raw') + ': ' + (decision.raw_state || '—'),
       t('temporal.stabilized') + ': ' + (temporal.state || '—'),
       t('temporal.risk') + ': ' + (temporal.risk || '—') + ' / ' + temporal.action,
       t('behavior.title') + ': ' + (profile ? profileLabel(profile) + ' · r' + profile.profile_revision : '—'),
-      t('temporal.reason') + ': ' + (temporal.reason ? (reason === reasonKey ? temporal.reason : reason) : t('temporal.noReason')),
+      t('temporal.reason') + ': ' + this.temporalReason(temporal),
       t('temporal.evidence') + ': ' + (temporal.evidence_frames ?? '—'),
-      t('temporal.near') + ': ' + t(typeof temporal.near_guard_clear !== 'boolean' ? 'temporal.unknown' : temporal.near_guard_clear ? 'temporal.yes' : 'temporal.no'),
+      t('temporal.near') + ': ' + this.nearGuardLabel(temporal.near_guard_clear),
       Array.isArray(temporal.spatial?.boundary) && temporal.spatial.boundary.length ? t('temporal.boundary') + ': ' + temporal.spatial.boundary.length : t('temporal.noBoundary'),
     ];
     text('navigation-temporal-state', rows.filter(Boolean).join('\n'));

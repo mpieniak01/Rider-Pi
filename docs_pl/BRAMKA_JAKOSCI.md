@@ -107,3 +107,14 @@ i utrzymania, pokrycie co najmniej 80%, duplikację najwyżej 3% i 100% przejrza
 hotspotów. Zielona bramka i zerowe liczniki zależą od bieżącego raportu;
 nie zapisujemy ich jako stałych zielonych odznak. Publikacja nowej wersji
 projektu według [zasad wersjonowania](WERSJONOWANIE.md) nie resetuje bazy Sonara.
+
+## Czytelność testów i panelu konfiguracji
+
+Testy konfiguracji, wyboru modeli i limitów czasu sprawdzają każdy warunek
+osobną asercją. Dane żądania i wyjątki wejściowe przygotowujemy przed
+`pytest.raises`, aby blok obejmował tylko operację, której błąd sprawdzamy.
+Walidacja konfiguracji i decyzji oraz renderowanie panelu mają osobne funkcje
+pomocnicze dla spójnych etapów, z zachowaniem kolejności kontroli i CAS.
+Płynne przewijanie panelu jest aktywne tylko przy
+`prefers-reduced-motion: no-preference`; preferencja ograniczenia ruchu
+pozostawia przewijanie domyślne.

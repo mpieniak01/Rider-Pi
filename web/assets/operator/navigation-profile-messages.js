@@ -21,7 +21,9 @@ export async function loadProfileMessages() {
 export const profileMessages = await loadProfileMessages();
 export function profileText(key, values = {}) {
   const locale = document.documentElement.lang;
-  const index = locale.startsWith('en') ? 1 : locale.startsWith('de') ? 2 : 0;
+  let index = 0;
+  if (locale.startsWith('en')) index = 1;
+  else if (locale.startsWith('de')) index = 2;
   let value = profileMessages[key]?.[index] || key;
   for (const [name, replacement] of Object.entries(values)) value = value.replaceAll('{'+name+'}', String(replacement));
   return value;

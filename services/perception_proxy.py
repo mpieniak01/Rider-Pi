@@ -12,6 +12,7 @@ from services.perception_selection import MODEL_ENGINES
 
 PREFIX = "/api/v1/rider/compute/vision/"
 MAX_BYTES = 128 * 1024
+JSON_MIME = "application/json"
 
 
 def _selected():
@@ -21,6 +22,32 @@ def _selected():
     return selected
 
 
+def _host_error_code(raw):
+    try:
+        error = json.loads(raw)
+        candidate = error.get("detail", error.get("error"))
+        if isinstance(candidate, dict):
+            candidate = candidate.get("code")
+        if isinstance(candidate, str) and candidate.replace("_", "").isalnum() and len(candidate) <= 128:
+            return candidate
+    except (ValueError, TypeError, AttributeError):
+        pass
+    return "navigation_model_host_unavailable"
+
+
+def _response_data(response_headers, raw):
+    mime = next((value for key, value in response_headers.items() if key.lower() == "content-type"), "")
+    if mime.split(";", 1)[0].strip().lower() != JSON_MIME:
+        raise ComputeError("navigation_model_host_response_invalid", 502)
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        raise ComputeError("navigation_model_host_response_invalid", 502) from exc
+    if not isinstance(data, dict) or len(raw) > MAX_BYTES:
+        raise ComputeError("navigation_model_host_response_invalid", 502)
+    return data
+
+
 def _request(suffix, body=None, *, transport_factory=PeerHTTPTransport):
     selected = _selected()
     transport = transport_factory(selected["url"], **transport_options(selected))
@@ -28,11 +55,11 @@ def _request(suffix, body=None, *, transport_factory=PeerHTTPTransport):
         headers = {
             "Authorization": "Bearer " + selected["token"],
             "X-Rider-Device": selected["device_id"],
-            "Accept": "application/json",
+            "Accept": JSON_MIME,
         }
         payload = None
         if body is not None:
-            headers["Content-Type"] = "application/json"
+            headers["Content-Type"] = JSON_MIME
             payload = json.dumps(body, allow_nan=False).encode()
         status, response_headers, raw = transport.request(
             "POST" if body is not None else "GET",
@@ -45,27 +72,8 @@ def _request(suffix, body=None, *, transport_factory=PeerHTTPTransport):
         if compute_config.snapshot()["revision"] != selected["revision"]:
             raise ComputeError("compute_selection_changed", 409)
         if not 200 <= status < 300:
-            code = "navigation_model_host_unavailable"
-            try:
-                error = json.loads(raw)
-                candidate = error.get("detail", error.get("error"))
-                if isinstance(candidate, dict):
-                    candidate = candidate.get("code")
-                if isinstance(candidate, str) and candidate.replace("_", "").isalnum() and len(candidate) <= 128:
-                    code = candidate
-            except (ValueError, TypeError, AttributeError):
-                pass
-            raise ComputeError(code, status if 400 <= status <= 599 else 503)
-        mime = next((value for key, value in response_headers.items() if key.lower() == "content-type"), "")
-        if mime.split(";", 1)[0].strip().lower() != "application/json":
-            raise ComputeError("navigation_model_host_response_invalid", 502)
-        try:
-            data = json.loads(raw)
-        except (ValueError, TypeError) as exc:
-            raise ComputeError("navigation_model_host_response_invalid", 502) from exc
-        if not isinstance(data, dict) or len(raw) > MAX_BYTES:
-            raise ComputeError("navigation_model_host_response_invalid", 502)
-        return data
+            raise ComputeError(_host_error_code(raw), status if 400 <= status <= 599 else 503)
+        return _response_data(response_headers, raw)
     finally:
         transport.close()
 

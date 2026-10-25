@@ -101,8 +101,9 @@ def test_partial_http_progress_cannot_restart_the_capture_timeout(phase, peer):
         **({"transport_profile": "trusted_lan", "expected_peer_id": "a" * 32} if peer else {}),
     )
     try:
+        capture_request = request('http://127.0.0.1:' + str(server.server_port))
         with pytest.raises(TimeoutError):
-            transport.open(request('http://127.0.0.1:' + str(server.server_port)), timeout=0.1)
+            transport.open(capture_request, timeout=0.1)
         assert len(seen) == 1
         assert (transport.peer.connection if peer else transport.connection) is None
     finally:
@@ -153,15 +154,19 @@ def test_late_journey_go_waits_in_zero_only_inside_original_feedback_window():
     now[0] = 10.265
     assert not lease.accept(reply(2), "frame2", 2, 9.96)
     assert not lease.latched
-    assert not lease.moving and lease.deadline is None
+    assert not lease.moving
+    assert lease.deadline is None
     assert lease.feedback_deadline == deadline
-    assert len(moves) == 1 and not stops
+    assert len(moves) == 1
+    assert not stops
     now[0] = 10.28
     assert lease.accept(reply(3), "frame3", 3, 10.26)
-    assert len(moves) == 2 and not stops
+    assert len(moves) == 2
+    assert not stops
     now[0] = lease.feedback_deadline + 0.001
     assert not lease.tick()
-    assert lease.latched and lease.reason == "decision_timeout"
+    assert lease.latched
+    assert lease.reason == 'decision_timeout'
 
 
 def test_expired_capture_retries_only_a_new_source_inside_existing_journey_feedback(isolated, monkeypatch):
@@ -208,9 +213,11 @@ def test_expired_capture_retries_only_a_new_source_inside_existing_journey_feedb
     }
     assert runner._request_decision(meta, {"data": b"new capture", "content_type": "image/jpeg"}, 9.96) == (False, None)
     assert runner.lease.feedback_deadline == feedback
-    assert not runner.lease.latched and not runner.lease.moving
+    assert not runner.lease.latched
+    assert not runner.lease.moving
     assert len(isolated[-1]) == before
-    assert runner.last_result["sequence"] == 2 and runner.last_result["action"] == "stop"
+    assert runner.last_result['sequence'] == 2
+    assert runner.last_result['action'] == 'stop'
     assert runner.request_attempt["state"] == "failed"
     assert runner.request_roundtrip_ms == pytest.approx(195)
     assert runner.response_age_ms == pytest.approx(305)
@@ -236,7 +243,8 @@ def test_inflight_timeout_diagnostics_do_not_label_last_completed_go_as_new_resp
         runner._request_decision(
             {"run_id": runner.run_id, "sequence": 51}, {"data": b"fixture", "content_type": "image/jpeg"}, 9.92
         )
-    assert seen[0]["state"] == "pending" and seen[0]["sequence"] == 51
+    assert seen[0]['state'] == 'pending'
+    assert seen[0]['sequence'] == 51
     assert seen[0]["elapsed_ms"] == pytest.approx(310)
     assert runner.request_roundtrip_ms == pytest.approx(310)
     assert runner.request_attempt["state"] == "failed"
@@ -296,8 +304,10 @@ def test_late_capture_does_not_forgive_changed_identity_or_obstacle(journey_leas
     now, moves, stops, lease, reply = journey_lease
     now[0] = 10.265
     assert not lease.accept(reply(2, **updates), "frame2", 2, 9.96)
-    assert lease.latched and lease.reason == reason
-    assert len(moves) == 1 and stops
+    assert lease.latched
+    assert lease.reason == reason
+    assert len(moves) == 1
+    assert stops
 
 
 @pytest.mark.parametrize("reason", ["operator_stop", "navigation_authority_lost", "decision_timeout"])
@@ -307,7 +317,9 @@ def test_gap_never_revives_a_retired_journey(journey_lease, reason):
     now[0] = 10.265
     assert not lease.await_fresh_capture()
     assert not lease.accept(reply(2), "frame2", 2, 10.26)
-    assert lease.latched and lease.reason == reason and len(moves) == 1
+    assert lease.latched
+    assert lease.reason == reason
+    assert len(moves) == 1
 
 
 def test_expired_feedback_cannot_be_extended_by_a_capture_gap(journey_lease):
@@ -315,8 +327,10 @@ def test_expired_feedback_cannot_be_extended_by_a_capture_gap(journey_lease):
     now[0] = lease.feedback_deadline + 0.001
     assert not lease.await_fresh_capture()
     assert not lease.accept(reply(2), "frame2", 2, now[0] - 0.01)
-    assert lease.reason == "decision_timeout" and lease.latched
-    assert len(moves) == 1 and stops
+    assert lease.reason == 'decision_timeout'
+    assert lease.latched
+    assert len(moves) == 1
+    assert stops
 
 
 def test_capture_preparation_that_exhausts_budget_cannot_send_a_post(isolated, monkeypatch):
@@ -362,7 +376,8 @@ def test_recorded_trial_replay_keeps_healthy_feedback_and_expires_real_missing_r
     assert rows[-1]["rtt"] == rows[-2]["rtt"]
     now[0] = 10 + rows[-1]["sampled"] - origin
     assert not lease.tick()
-    assert lease.reason == "decision_timeout" and stops
+    assert lease.reason == 'decision_timeout'
+    assert stops
 
 
 @pytest.mark.parametrize(
@@ -409,6 +424,7 @@ def test_capture_gap_rechecks_manual_authority_before_retry(isolated):
     )
     runner.lease.deadline, runner.lease.feedback_deadline = 10.2, 10.3
     isolated[2]["owner"] = "manual"
+    capture_error = CaptureBudgetExpired()
     with pytest.raises(runner_module.ComputeError, match="navigation_authority_lost"):
-        runner._retry_capture_budget(CaptureBudgetExpired(), {"run_id": runner.run_id})
+        runner._retry_capture_budget(capture_error, {"run_id": runner.run_id})
     assert not any(x.get("vx") for x in isolated[-1])

@@ -101,24 +101,7 @@ class NavigationHTTPTransport:
         deadline = self.clock() + timeout
         connection = self._prepare_connection(parsed, timeout)
         try:
-            # Connect, request, headers and body share one original budget.
-            if connection.sock is None and callable(getattr(connection, "connect", None)):
-                connection.connect()
-            apply_http_budget(connection, deadline, self.clock)
-            self.requests += 1
-            connection.request("POST", parsed.path, body=request.data, headers=dict(request.header_items()))
-            response = connection.getresponse()
-            body = response.read(MAX_RESPONSE + 1)
-            if len(body) > MAX_RESPONSE:
-                raise ComputeError("navigation_response_bounds")
-            self.last_response = self.clock()
-            if 300 <= response.status < 400:
-                raise ComputeError("navigation_redirect_denied")
-            if not 200 <= response.status < 300:
-                raise urllib.error.HTTPError(
-                    request.full_url, response.status, "navigation_http_error", response.headers, io.BytesIO(body)
-                )
-            return io.BytesIO(body)
+            return self._send_request(request, parsed, connection, deadline)
         except urllib.error.HTTPError:
             # The bounded body was consumed. Observation may try a NEW capture;
             # this POST is never replayed and its original deadline is unchanged.
@@ -135,6 +118,26 @@ class NavigationHTTPTransport:
         except Exception:
             self._discard()
             raise
+
+    def _send_request(self, request, parsed, connection, deadline):
+        # Connect, request, headers and body share one original budget.
+        if connection.sock is None and callable(getattr(connection, "connect", None)):
+            connection.connect()
+        apply_http_budget(connection, deadline, self.clock)
+        self.requests += 1
+        connection.request("POST", parsed.path, body=request.data, headers=dict(request.header_items()))
+        response = connection.getresponse()
+        body = response.read(MAX_RESPONSE + 1)
+        if len(body) > MAX_RESPONSE:
+            raise ComputeError("navigation_response_bounds")
+        self.last_response = self.clock()
+        if 300 <= response.status < 400:
+            raise ComputeError("navigation_redirect_denied")
+        if not 200 <= response.status < 300:
+            raise urllib.error.HTTPError(
+                request.full_url, response.status, "navigation_http_error", response.headers, io.BytesIO(body)
+            )
+        return io.BytesIO(body)
 
     def _open_peer(self, request, parsed, timeout):
         deadline = self.clock() + timeout

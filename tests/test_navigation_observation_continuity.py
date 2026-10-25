@@ -287,7 +287,8 @@ def test_approval_adoption_cannot_replace_a_concurrently_rebound_journey(isolate
         admitted_lease, admitted_run = instance.lease, instance.run_id
     thread.join(2)
     assert not thread.is_alive()
-    assert len(errors) == 1 and isinstance(errors[0], navigation.ComputeError)
+    assert len(errors) == 1
+    assert isinstance(errors[0], navigation.ComputeError)
     assert str(errors[0]) == "navigation_configuration_changed"
     assert instance.lease is admitted_lease
     assert instance.run_id == admitted_run

@@ -34,7 +34,8 @@ def test_camera_failure_degrades_catalog_without_claiming_navigation_save_failed
     assert config["model_tuning_supported"] is True
     assert config["perception_tuning"]["version"] == 1
     if method == "POST":
-        assert payload["ok"] is True and payload["persisted"] is True
+        assert payload['ok'] is True
+        assert payload['persisted'] is True
         persisted = json.loads(target.read_text())
         assert persisted["revision"] == config["revision"] == 1
         assert persisted["speed"] == config["speed"] == 0.12

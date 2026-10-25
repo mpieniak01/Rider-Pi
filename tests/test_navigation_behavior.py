@@ -47,11 +47,13 @@ def test_select_profile_forces_observation_and_invalidates_approval(policy_store
         }
     )
     assert result["behavior"] == behavior()
-    assert result["mode"] == "observe" and result["verified"] is False
+    assert result['mode'] == 'observe'
+    assert result['verified'] is False
     assert result["calibration_id"] == result["model_sha256"] == ""
     assert result["avoidance"]["sweep_verified"] is False
+    configuration = {"revision": 0, "values": {"behavior": behavior("fluid")}}
     with pytest.raises(ValueError, match="conflict"):
-        navigation_config.configure({"revision": 0, "values": {"behavior": behavior("fluid")}})
+        navigation_config.configure(configuration)
 
 
 @pytest.mark.parametrize(
@@ -62,8 +64,9 @@ def test_profile_change_rejected_while_moving_or_unknown(policy_store, monkeypat
     state = stopped()
     state[field] = value
     monkeypatch.setattr(safety_contract, "read_status", lambda **_: state)
+    configuration = {"revision": 0, "values": {"behavior": behavior()}}
     with pytest.raises(ValueError, match="requires_stopped"):
-        navigation_config.configure({"revision": 0, "values": {"behavior": behavior()}})
+        navigation_config.configure(configuration)
     assert navigation_config.snapshot()["revision"] == 0
 
 
@@ -240,7 +243,8 @@ def test_profile_busy_is_conflict_and_does_not_persist(policy_store, monkeypatch
     monkeypatch.setattr(navigation_config, "configure", busy)
     with Flask(__name__).test_request_context(method="POST", json={"revision": 0}):
         response, code = config_handler()
-        assert code == 409 and response.get_json()["error"] == "navigation_profile_busy"
+        assert code == 409
+        assert response.get_json()['error'] == 'navigation_profile_busy'
     assert navigation_config.snapshot()["revision"] == 0
 
 

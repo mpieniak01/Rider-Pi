@@ -322,7 +322,8 @@ def test_observation_transport_grace_does_not_extend_drive_deadline(isolated, mo
     monkeypatch.setattr(module, "NavigationHTTPTransport", lambda *_, **kw: SimpleNamespace(open=open_request))
     metadata = {"deadline_ms": runner.policy["decision_budget_ms"], "mode": runner.policy["mode"]}
     assert runner._request(metadata, b"fixture", "image/jpeg") == {"action": "stop"}
-    assert len(calls) == 1 and calls[0][1] == metadata
+    assert len(calls) == 1
+    assert calls[0][1] == metadata
     if observe:
         assert calls[0][0] == expected_timeout
     else:
