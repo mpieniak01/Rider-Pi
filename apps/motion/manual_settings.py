@@ -209,14 +209,14 @@ def direction_defaults(values):
     }
 
 
-def _validate_direction(name, row, values):
+def _validate_direction(name, row, values, *, max_duration=MAX_PANEL_DURATION_S):
     if not isinstance(row, dict) or set(row) != {"minimum", "maximum", "step", "speed", "duration"}:
         raise ValueError("manual_settings_direction_fields")
     if not all(finite(value) for value in row.values()):
         raise ValueError("manual_settings_direction_number")
     if not 0 <= row["minimum"] <= row["maximum"] <= values["speed_limit"]:
         raise ValueError("manual_settings_direction_range")
-    if not 0 < row["step"] <= 1 or not 0.01 <= row["duration"] <= MAX_PANEL_DURATION_S:
+    if not 0 < row["step"] <= 1 or not 0.01 <= row["duration"] <= max_duration:
         raise ValueError("manual_settings_direction_step_or_duration")
     if row["speed"] != 0 and not row["minimum"] <= row["speed"] <= row["maximum"] or row["speed"] < 0:
         raise ValueError("manual_settings_direction_speed")
@@ -251,7 +251,7 @@ def _decode(target):
     return json.loads(raw, object_pairs_hook=pairs)
 
 
-def _canonical_values(row):
+def _canonical_values(row, *, migrate_duration=False):
     values = row.get("values")
     if row.get("schema_version", 1) == 1:
         if not isinstance(values, dict) or set(values) != FIELDS:
@@ -268,11 +268,17 @@ def _canonical_values(row):
     if not isinstance(values, dict):
         raise ValueError("manual_settings_fields")
     values = dict(values, ramp_mode=values.get("ramp_mode", 0))
+    if (
+        migrate_duration
+        and finite(values.get("pulse_duration"))
+        and MAX_PANEL_DURATION_S < values["pulse_duration"] <= 1
+    ):
+        values["pulse_duration"] = MAX_PANEL_DURATION_S
     values = validate(values)
     return values
 
 
-def _canonical_profiles(profiles):
+def _canonical_profiles(profiles, *, migrate_duration=False):
     if not isinstance(profiles, dict) or len(profiles) > 16:
         raise ValueError("manual_profiles_limit")
     saved = {}
@@ -283,13 +289,33 @@ def _canonical_profiles(profiles):
             raise ValueError("manual_profile_fields")
         name = profile_name(profile["name"])
         canonical = _canonical(
-            {"schema_version": 2, "revision": 0, "values": profile["values"], "directions": profile["directions"]}
+            {"schema_version": 2, "revision": 0, "values": profile["values"], "directions": profile["directions"]},
+            migrate_duration=migrate_duration,
         )
         saved[key] = {"name": name, "values": canonical["values"], "directions": canonical["directions"]}
     return saved
 
 
-def _canonical(row):
+def _migrate_durations(directions, values):
+    """Shorten previously valid stored pulses without changing new-write limits."""
+    if not isinstance(directions, dict):
+        return directions
+    migrated = dict(directions)
+    for name, item in directions.items():
+        if name not in DIRECTIONS or not isinstance(item, dict):
+            continue
+        duration = item.get("duration")
+        if not finite(duration) or not MAX_PANEL_DURATION_S < duration <= 1:
+            continue
+        row = _validate_direction(name, item, values, max_duration=1)
+        axis = "linear" if name in DIRECTIONS[:2] else "turn"
+        peak = MAX_PANEL_DURATION_S / (1 / values[axis + "_rate"] + 1 / values[axis + "_deceleration"])
+        row.update(duration=MAX_PANEL_DURATION_S, minimum=min(row["minimum"], peak))
+        migrated[name] = row
+    return migrated
+
+
+def _canonical(row, *, migrate_duration=False):
     if not isinstance(row, dict) or type(row.get("revision")) is not int or row["revision"] < 0:
         raise ValueError("manual_settings_revision")
     if set(row) - {"schema_version", "revision", "values", "directions", "profiles", "active_profile"}:
@@ -298,8 +324,11 @@ def _canonical(row):
         raise ValueError("manual_settings_schema")
     if row.get("schema_version") == 2 and "directions" not in row:
         raise ValueError("manual_settings_directions_required")
-    values = _canonical_values(row)
-    directions = validate_directions(row.get("directions", direction_defaults(values)), values)
+    values = _canonical_values(row, migrate_duration=migrate_duration)
+    directions = row.get("directions", direction_defaults(values))
+    if migrate_duration:
+        directions = _migrate_durations(directions, values)
+    directions = validate_directions(directions, values)
     # Explicit aliases for older readers, derived from the authoritative rows.
     values.update(
         linear_speed=directions["forward"]["speed"],
@@ -307,7 +336,7 @@ def _canonical(row):
         pulse_duration=max(item["duration"] for item in directions.values()),
     )
     active = row.get("active_profile")
-    saved = _canonical_profiles(row.get("profiles", {}))
+    saved = _canonical_profiles(row.get("profiles", {}), migrate_duration=migrate_duration)
     if active is not None and (not isinstance(active, str) or active not in saved):
         raise ValueError("manual_profile_active")
     return {
@@ -355,14 +384,14 @@ def read(*, blocking=True):
     target = path()
     if target.exists():
         original = _decode(target)
-        row = _canonical(original)
+        row = _canonical(original, migrate_duration=True)
         if row == original:
             return row
     with locked(blocking=blocking):
         target = path()
         if target.exists():
             original = _decode(target)
-            row = _canonical(original)
+            row = _canonical(original, migrate_duration=True)
             if row != original:
                 row["revision"] += 1
                 _atomic(row)
@@ -370,7 +399,7 @@ def read(*, blocking=True):
         legacy = Path(__file__).resolve().parents[2] / "config/local/manual-controls.json"
         # Explicit paths are independent stores, including isolated WSL tests.
         if not os.getenv("RIDER_MANUAL_SETTINGS_PATH") and legacy.exists():
-            row = _canonical(_decode(legacy))
+            row = _canonical(_decode(legacy), migrate_duration=True)
             row["revision"] += 1  # Old client values must be refreshed after migration.
         else:
             values = defaults()
@@ -385,7 +414,7 @@ def read(*, blocking=True):
                     profile = calibration_profiles.read_profile(active["profile_digest"])
                     legacy_values = {key: values[key] for key in FIELDS}
                     legacy_values.update(profile["motion"], **(profile.get("interaction") or {}))
-                    migrated = _canonical({"revision": 0, "values": legacy_values})
+                    migrated = _canonical({"revision": 0, "values": legacy_values}, migrate_duration=True)
                     values = migrated["values"]
                     revision = 1
             row = _canonical(

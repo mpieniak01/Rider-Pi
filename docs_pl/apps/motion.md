@@ -120,3 +120,11 @@ Odczyt katalogu/statusu nie uzbraja i nie porusza robota. POST /api/motion/trial
 GET /api/motion/trials/profiles i GET /api/motion/trials/<request_id> zwracają kontrakt rider.pulse_trials v1. Status wykonawcy zawiera pulse_trials.current oraz ograniczoną historię. Po normalnym zakończeniu kończy się uprawnienie próby. STOP/E-Stop, nowa generacja, anulowanie lub nowe sterowanie ręczne usuwają całą pozostałą serię; opóźniona odpowiedź nie może jej wznowić. Powtórzony request_id nie wykonuje prób ponownie.
 
 Testy automatyczne korzystają wyłącznie z atrap czasu, adaptera i BUS. Wdrożenie oraz odczyty GET nie są zgodą na fizyczną próbę. Optymalizacja pętli i odczytów usług pozostaje odrębnym zakresem.
+
+
+Przy odczycie starszych ustawień i nazwanych profili poprawne wcześniej impulsy
+powyżej 500 ms, do dawnego maksimum 1 s, są skracane do 500 ms. Migracja zwiększa
+rewizję raz i zachowuje pozostałe nastawy. Jeśli krótszy impuls nie osiągnąłby
+zapisanego minimum kierunku, minimum jest obniżane do osiągalnego szczytu;
+prędkość zadana i rampy nie są zwiększane. Niepoprawne stare dane nadal są
+odrzucane. Nowe zapisy ponad 500 ms nie korzystają z migracji i są odrzucane.
