@@ -9,11 +9,10 @@ import re
 from contextlib import nullcontext
 from pathlib import Path
 
+from apps.motion.limits import MAX_MOTION_MS, MAX_SPEED
 from services.compute_config import _lock, _require_idle_goals, _selection_lock, _write
 from services.navigation_profiles import DEFAULT_BEHAVIOR, validate_behavior
 from services.perception_selection import IDENTITY_FIELDS, drive_supported, identity, validate_identity
-
-MAX_MOTION_MS = 250
 
 DEFAULT = {
     "protocol_version": 1,
@@ -62,7 +61,7 @@ def _validate_command_policy(data):
         isinstance(speed, bool)
         or not isinstance(speed, (float, int))
         or not math.isfinite(speed)
-        or not 0 < speed <= 0.15
+        or not 0.01 <= speed <= MAX_SPEED
     ):
         raise ValueError("navigation_speed_invalid")
     if type(data["decision_budget_ms"]) is not int or not 100 <= data["decision_budget_ms"] <= 500:
@@ -126,10 +125,10 @@ def _validated_avoidance(avoidance):
     if (
         type(avoidance["turn_speed"]) not in (float, int)
         or not math.isfinite(avoidance["turn_speed"])
-        or not 0.01 <= avoidance["turn_speed"] <= 0.1
+        or not 0.01 <= avoidance["turn_speed"] <= MAX_SPEED
     ):
         raise ValueError("navigation_avoidance_invalid")
-    for key, low, high in (("turn_ms", 50, 150), ("max_turn_pulses", 1, 5)):
+    for key, low, high in (("turn_ms", 50, MAX_MOTION_MS), ("max_turn_pulses", 1, 5)):
         if type(avoidance[key]) is not int or not low <= avoidance[key] <= high:
             raise ValueError("navigation_avoidance_invalid")
     _validate_correction_limits(avoidance)
@@ -167,9 +166,7 @@ def _validate_avoidance_authority(data, perception, avoidance, geometry):
         and any(geometry[key] is None for key in ("fx", "fy", "radius_ratio"))
     ):
         raise ValueError("navigation_geometry_calibration_required")
-    if avoidance["enabled"] and (
-        perception["engine"] != "depth_plane" or data["speed"] > 0.1 or data["max_motion_ms"] > MAX_MOTION_MS
-    ):
+    if avoidance["enabled"] and (perception["engine"] != "depth_plane"):
         raise ValueError("navigation_avoidance_limits")
     if avoidance["enabled"] and data["mode"] == "drive" and not avoidance["sweep_verified"]:
         raise ValueError("navigation_avoidance_not_accepted")

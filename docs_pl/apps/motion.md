@@ -32,7 +32,14 @@ koperty. Owner: manual/follow_me/navigation. Aktuatory wymagają request_id,
 source, generation, rosnącego seq, ts oraz ttl_ms 1–500. API i wykonawca
 walidują niezależnie. Klient korzysta z server_time API; nie odświeża starego
 żądania. Jazda/obrót: [-1,1]. Impuls panelu z device_settings korzysta z
-deskryptora (0.01–1.0 s); polecenia ogólne/testowe mają osobne ograniczenia.
+deskryptora (0.01–0.5 s). Maksimum pojedynczego impulsu wynosi 500 ms również
+dla poleceń ogólnych i nawigacji; zakres konfiguracji nawigacji to 50–500 ms.
+Maksymalna wartość prędkości to 1.0. Prędkość/impuls manuala ogranicza dodatkowo
+zapisany profil kierunku; ograniczona świeżą decyzją nawigacja korzysta z własnej
+polityki, bez dziedziczenia wartości impulsu i maksimum kierunku manualnego.
+Rampy pozostają wspólne. Decyzja nawigacji jest ważna najwyżej 500 ms i nigdy
+poza pozostałym budżetem od przechwycenia obrazu; wygaśnięcie nadal zatrzymuje ruch.
+Zwiększenie zakresów nie zmienia zapisanych wartości ani nie udziela zgody na ruch.
 STOP/disarm/E-Stop nie wymagają
 świeżej koperty. STOP zmienia generację i usuwa cel. Nowszy cel zastępuje pending
 z terminalnym ACK; polecenia nie wracają po ARM.

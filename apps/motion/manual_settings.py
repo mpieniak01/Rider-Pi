@@ -13,11 +13,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from apps.motion.dynamics import RampLimits, finite
+from apps.motion.limits import MAX_DURATION_S
 from common.actuator_parameters import posture_parameters
 
 FIELDS = {"linear_speed", "turn_speed", "pulse_duration", "speed_limit", "linear_rate", "turn_rate"}
 SMOOTHING = {"linear_deceleration", "turn_deceleration", "reversal_pause", "ramp_mode"}
-MAX_PANEL_DURATION_S = 1.0
+MAX_PANEL_DURATION_S = MAX_DURATION_S
 
 DIRECTIONS = ("forward", "backward", "left", "right")
 _LOCK = threading.RLock()

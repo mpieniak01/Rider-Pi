@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from apps.motion.dynamics import CurveRamp, RampLimits, approach, curve_factor, finite
+from apps.motion.limits import MAX_SPEED
 from apps.motion.manual_settings import MAX_PANEL_DURATION_S
 from apps.safety.estop import estop_triggered as estop_triggered, motion_enabled as motion_enabled
 from apps.safety.gate import MAX_DURATION_S, MotionGate
@@ -209,7 +210,12 @@ class MotionController:
             self.gate.disarm("invalid_motion_intent")
             self.stop()
             return False
-        if max(abs(lx), abs(az)) > self.limits.speed_limit:
+        navigation = (
+            remote_decision_deadline is not None
+            and self.gate.owner == "navigation"
+            and self.gate.execution_context == "panel"
+        )
+        if max(abs(lx), abs(az)) > (MAX_SPEED if navigation else self.limits.speed_limit):
             return False
         self._set_motion_target(lx, az)
         if self.t_lx == 0 and self.t_az == 0 and mode != "release":

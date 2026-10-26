@@ -7,6 +7,7 @@ import threading
 import time
 
 from apps.compute.journey import JourneyProgress
+from apps.motion.limits import MAX_DECISION_MS
 
 
 class DecisionLease:
@@ -200,7 +201,7 @@ class DecisionLease:
             self._halt("navigation_journey_identity_mismatch")
             return None
         valid = decision.get("valid_for_ms")
-        if type(valid) is not int or not 0 < valid <= 200:
+        if type(valid) is not int or not 0 < valid <= MAX_DECISION_MS:
             self._halt("decision_invalid_or_expired")
             return None
         actions = self._allowed_actions(identity["protocol_version"])

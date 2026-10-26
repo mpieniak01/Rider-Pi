@@ -152,15 +152,15 @@ def test_shared_defaults_reach_requested_speed_within_default_pulse(executor):
         instance.poll_sensors()
 
 
-def test_full_manual_range_and_second_pulse_are_persisted(store):
+def test_full_manual_range_and_half_second_pulse_are_persisted(store):
     before = store.read()
     row = store.update(
         {"linear_rate": 8, "linear_deceleration": 8},
         before["revision"],
-        directions={"forward": {"maximum": 1, "speed": 1, "duration": 1}},
+        directions={"forward": {"maximum": 1, "speed": 1, "duration": 0.5}},
     )
     assert row["directions"]["forward"]["speed"] == 1
-    assert row["directions"]["forward"]["duration"] == 1
+    assert row["directions"]["forward"]["duration"] == 0.5
     assert row["values"]["speed_limit"] == 1
     assert store.read() == row
 
@@ -178,11 +178,11 @@ def test_legacy_sixty_percent_cap_is_derived_from_new_direction_maximum(store):
     assert changed["directions"]["forward"] == row["directions"]["forward"]
 
 
-def test_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
+def test_half_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
     instance, clock = executor
     operator_arm(instance)
     row = settings.read()
-    row = settings.update({}, row["revision"], directions={"forward": {"duration": 1}})
+    row = settings.update({}, row["revision"], directions={"forward": {"duration": 0.5}})
     request = command(
         instance,
         direction="forward",
@@ -193,21 +193,21 @@ def test_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
     started = clock.now
     ack = instance.apply(request)
     assert ack["status"] == "accepted", ack
-    assert instance.controller.deadline == started + 1
-    for _ in range(35):
+    assert instance.controller.deadline == started + 0.5
+    for _ in range(15):
         clock.now += 0.02
         instance.poll_sensors()
         instance.tick(0.02)
-    assert not instance.controller.stopped  # Still running after 500 ms.
+    assert not instance.controller.stopped  # Still running after 300 ms.
     assert instance.apply(command(instance, "stop"))["status"] == "executed"
     assert instance.controller.stopped
 
 
-def test_second_pulse_does_not_allow_old_or_raw_commands(executor):
+def test_half_second_pulse_does_not_allow_old_or_raw_commands(executor):
     instance, clock = executor
     operator_arm(instance)
     row = settings.read()
-    row = settings.update({}, row["revision"], directions={"forward": {"duration": 1}})
+    row = settings.update({}, row["revision"], directions={"forward": {"duration": 0.5}})
     stale = command(instance, direction="forward", device_settings=True, settings_revision=row["revision"])
     clock.now += 0.6
     assert instance.apply(stale)["status"] == "rejected"

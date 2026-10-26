@@ -75,7 +75,7 @@ def test_unaccepted_or_exhausted_turn_does_not_move(field, value):
 def test_configuration_rejects_unaccepted_driving_and_excessive_turn():
     config, _, _, _ = setup()
     assert validate(config) == config
-    config["avoidance"]["turn_speed"] = 0.11
+    config["avoidance"]["turn_speed"] = 1.01
     with pytest.raises(ValueError, match="avoidance_invalid"):
         validate(config)
     config["avoidance"]["turn_speed"] = 0.05

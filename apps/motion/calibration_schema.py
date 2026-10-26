@@ -2,6 +2,7 @@
 
 import json
 
+from apps.motion.limits import MAX_DURATION_S
 from apps.odometry.calibration import calibration_status
 from common.data_quality import finite_number
 
@@ -54,7 +55,7 @@ def _validate_interaction(value):
         _fields(interaction, ("linear_speed", "turn_speed", "pulse_duration"), "profile_interaction_fields")
         for field in ("linear_speed", "turn_speed", "pulse_duration"):
             number = interaction[field]
-            upper = 0.25 if field == "pulse_duration" else 1.0
+            upper = MAX_DURATION_S if field == "pulse_duration" else 1.0
             lower = 0.01 if field == "pulse_duration" else 0.0
             if not finite_number(number) or not lower <= number <= upper:
                 raise ValueError("profile_interaction_" + field)
