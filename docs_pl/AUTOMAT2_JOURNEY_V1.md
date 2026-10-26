@@ -17,8 +17,10 @@ kontraktu przez Venom. Polityka musi pozwalać na jazdę oraz mieć
 `avoidance.enabled:true`, `protocol_version:3`, `sweep_verified:true` i aktualny
 odbiór modelu/strefy. Zachowane są geometrie `image` i `ground`; wybrany `ground`
 wymaga rzeczywistych `fx`, `fy`, `radius_ratio` oraz bieżącego potwierdzenia.
-Brak kalibracji nie jest uzupełniany automatycznie. Limity omijania zachowują
-maksymalnie 0,1 SDK i impuls do 150 ms.
+Brak kalibracji nie jest uzupełniany automatycznie. Pi udostępnia maksymalną
+znormalizowaną siłę polecenia 1 i pojedynczy impuls do 500 ms, także dla omijania.
+Ruch używa zapisanych nastaw i krótszych deadline decyzji; wartości domyślne
+nie są podnoszone automatycznie.
 
 Przygotowanie korzysta z tej samej transakcji co trial. Ścieżka zimna rezerwuje
 kamerę, zwalnia starego producenta, konfiguruje jazdę, uzyskuje pojedynczą zgodę

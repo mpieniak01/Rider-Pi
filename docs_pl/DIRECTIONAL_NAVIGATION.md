@@ -19,8 +19,10 @@ i najbliższej strefy; Pi niezależnie sprawdza dowody. Klatka sprzed lub podcza
 korekty nie autoryzuje następnego ruchu. Host trzyma stronę do potwierdzenia
 wolnego toru prosto na nowych klatkach.
 
-Pozostają pierwotne 10 s ARM/próby, watchdog i limity impulsu:
-jazda <=0,1 SDK / 150 ms, yaw 0,01–0,1 SDK / 50–150 ms.
+Pozostają pierwotne 10 s ARM/próby i watchdog. Pi udostępnia siłę polecenia
+jazdy/obrotu do 1 oraz impuls 50–500 ms; ważność decyzji wynosi maksymalnie 500 ms.
+Wyjście nadal ograniczają zapisane nastawy i krótsze deadline capture/decyzji.
+Wspólne maksimum nie zwiększa automatycznie zapisanych wartości.
 Nie ma automatycznego ARM ani przedłużania. Końcowy avoidance_no_progress
 nie może wznowić się przez późniejsze GO.
 

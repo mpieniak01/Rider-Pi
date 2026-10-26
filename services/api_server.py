@@ -48,6 +48,7 @@ import services.api_core.http_contract as http_contract
 import services.api_core.models_api as models_api
 import services.api_core.navigator_api as navigator_api
 import services.api_core.provider_api as provider_api
+import services.api_core.pulse_trials_api as pulse_trials_api
 import services.api_core.rider_routes as rider_routes
 import services.api_core.services_api as services_api
 import services.api_core.state_api as state_api
@@ -285,6 +286,18 @@ _add_rule(
     "/api/motion/queue",
     view_func=control_api.api_motion_queue,
     methods=["GET", "OPTIONS"],
+)
+
+# Pulse recipes share the existing executor and safety channel.
+_add_rule(
+    "/api/motion/trials/profiles", endpoint="pulse_trials_catalog", view_func=pulse_trials_api.catalog, methods=["GET"]
+)
+_add_rule("/api/motion/trials", endpoint="pulse_trials_start", view_func=pulse_trials_api.start, methods=["POST"])
+_add_rule(
+    "/api/motion/trials/<request_id>",
+    endpoint="pulse_trials_status",
+    view_func=pulse_trials_api.status,
+    methods=["GET"],
 )
 
 # navigator API (Rekonesans mode)

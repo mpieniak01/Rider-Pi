@@ -152,15 +152,15 @@ def test_shared_defaults_reach_requested_speed_within_default_pulse(executor):
         instance.poll_sensors()
 
 
-def test_full_manual_range_and_second_pulse_are_persisted(store):
+def test_full_manual_range_and_half_second_pulse_are_persisted(store):
     before = store.read()
     row = store.update(
         {"linear_rate": 8, "linear_deceleration": 8},
         before["revision"],
-        directions={"forward": {"maximum": 1, "speed": 1, "duration": 1}},
+        directions={"forward": {"maximum": 1, "speed": 1, "duration": 0.5}},
     )
     assert row["directions"]["forward"]["speed"] == 1
-    assert row["directions"]["forward"]["duration"] == 1
+    assert row["directions"]["forward"]["duration"] == 0.5
     assert row["values"]["speed_limit"] == 1
     assert store.read() == row
 
@@ -178,11 +178,11 @@ def test_legacy_sixty_percent_cap_is_derived_from_new_direction_maximum(store):
     assert changed["directions"]["forward"] == row["directions"]["forward"]
 
 
-def test_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
+def test_half_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
     instance, clock = executor
     operator_arm(instance)
     row = settings.read()
-    row = settings.update({}, row["revision"], directions={"forward": {"duration": 1}})
+    row = settings.update({}, row["revision"], directions={"forward": {"duration": 0.5}})
     request = command(
         instance,
         direction="forward",
@@ -193,24 +193,109 @@ def test_second_panel_pulse_is_not_clipped_by_command_freshness(executor):
     started = clock.now
     ack = instance.apply(request)
     assert ack["status"] == "accepted", ack
-    assert instance.controller.deadline == started + 1
-    for _ in range(35):
+    assert instance.controller.deadline == started + 0.5
+    for _ in range(15):
         clock.now += 0.02
         instance.poll_sensors()
         instance.tick(0.02)
-    assert not instance.controller.stopped  # Still running after 500 ms.
+    assert not instance.controller.stopped  # Still running after 300 ms.
     assert instance.apply(command(instance, "stop"))["status"] == "executed"
     assert instance.controller.stopped
 
 
-def test_second_pulse_does_not_allow_old_or_raw_commands(executor):
+def test_half_second_pulse_does_not_allow_old_or_raw_commands(executor):
     instance, clock = executor
     operator_arm(instance)
     row = settings.read()
-    row = settings.update({}, row["revision"], directions={"forward": {"duration": 1}})
+    row = settings.update({}, row["revision"], directions={"forward": {"duration": 0.5}})
     stale = command(instance, direction="forward", device_settings=True, settings_revision=row["revision"])
     clock.now += 0.6
     assert instance.apply(stale)["status"] == "rejected"
     assert not any(c[0] == "move" for c in instance.adapter.calls)
     raw = command(instance, vx=0.2, duration=1, settings_revision=row["revision"])
     assert instance.apply(raw)["status"] == "rejected"
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_saved_long_pulses_and_profiles_migrate_once_without_actuation(store, version):
+    import copy
+    import json
+
+    row = store.read()
+    row["values"].update(pulse_duration=0.8, linear_rate=1, linear_deceleration=1)
+    row["directions"]["forward"].update(duration=0.8, minimum=0.15)
+    if version == 1:
+        row = {"revision": row["revision"], "values": {key: row["values"][key] for key in store.FIELDS}}
+    else:
+        profile = {
+            "name": "Saved long pulse",
+            "values": dict(row["values"]),
+            "directions": copy.deepcopy(row["directions"]),
+        }
+        profile["directions"]["forward"].update(duration=1.0, minimum=0.3, speed=0.4)
+        profile["values"].update(pulse_duration=1.0, linear_speed=0.4)
+        row["profiles"] = {"a" * 32: profile}
+        row["active_profile"] = "a" * 32
+    store.path().write_text(json.dumps(row))
+    migrated = store.read()
+    assert migrated["revision"] == row["revision"] + 1
+    assert migrated["values"]["pulse_duration"] == 0.5
+    assert migrated["directions"]["forward"]["duration"] == 0.5
+    assert migrated["directions"]["forward"]["speed"] == row["values"]["linear_speed"]
+    if version == 2:
+        saved = migrated["profiles"]["a" * 32]
+        assert saved["name"] == "Saved long pulse"
+        assert saved["values"]["pulse_duration"] == saved["directions"]["forward"]["duration"] == 0.5
+        assert saved["directions"]["forward"]["minimum"] == 0.25
+        assert migrated["active_profile"] == "a" * 32
+    encoded = store.path().read_text()
+    assert store.read() == migrated and store.path().read_text() == encoded
+    with pytest.raises(ValueError, match="conflict"):
+        store.update({"pulse_duration": 0.4}, row["revision"])
+
+
+def test_migrated_shorter_pulse_keeps_its_minimum_reachable_without_faster_ramps(store):
+    import json
+
+    row = store.read()
+    row["values"].update(pulse_duration=1.0, linear_speed=0.4, linear_rate=1, linear_deceleration=1)
+    row["directions"]["forward"].update(speed=0.4, duration=1.0, minimum=0.3)
+    store.path().write_text(json.dumps(row))
+    migrated = store.read()
+    assert migrated["directions"]["forward"] == dict(row["directions"]["forward"], duration=0.5, minimum=0.25)
+    assert migrated["values"]["linear_rate"] == migrated["values"]["linear_deceleration"] == 1
+
+
+@pytest.mark.parametrize("profile", [False, True])
+def test_migration_rejects_invalid_stored_duration_and_new_long_writes(store, profile):
+    import copy
+    import json
+
+    row = store.read()
+    for directions in (None, {"forward": {"duration": 0.6}}):
+        with pytest.raises(ValueError):
+            store.update({"pulse_duration": 0.6} if directions is None else {}, row["revision"], directions=directions)
+    if profile:
+        saved = {"name": "Invalid", "values": dict(row["values"]), "directions": copy.deepcopy(row["directions"])}
+        saved["directions"]["forward"]["duration"] = 1.01
+        row["profiles"] = {"a" * 32: saved}
+    else:
+        row["directions"]["forward"]["duration"] = 1.01
+    encoded = json.dumps(row)
+    store.path().write_text(encoded)
+    with pytest.raises(ValueError):
+        store.read()
+    assert store.path().read_text() == encoded
+
+
+def test_duration_migration_does_not_repair_an_unrelated_invalid_direction_range(store):
+    import json
+
+    row = store.read()
+    row["values"].update(pulse_duration=1.0, linear_rate=1, linear_deceleration=1)
+    row["directions"]["forward"].update(duration=1.0, speed=0.25, minimum=0.3, maximum=0.25)
+    encoded = json.dumps(row)
+    store.path().write_text(encoded)
+    with pytest.raises(ValueError, match="direction_range"):
+        store.read()
+    assert store.path().read_text() == encoded

@@ -38,6 +38,7 @@ _GROUPS = {
             "/api/navigation/model-selection",
         ),
     ),
+    "rider.pulse_trials": (1, ("/api/motion/trials/profiles", "/api/motion/trials", "/api/motion/trials/<request_id>")),
     "rider.transport": (1, ("/api/v1/transport/identity",)),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),
     "rider.catalog": (2, ("/api/logic/catalog",)),

@@ -18,8 +18,9 @@ The policy must admit drive and use accepted avoidance v3 (`enabled:true`,
 `protocol_version:3`, `sweep_verified:true`) with current model/zone acceptance.
 Both `image` and `ground` geometry remain available. Ground requires real
 `fx`, `fy`, `radius_ratio` and current acceptance; missing calibration is never
-filled automatically. Existing avoidance limits remain at most 0.1 SDK and
-150 ms per pulse.
+filled automatically. Pi advertises a maximum normalized command magnitude of 1
+and a single pulse ceiling of 500 ms, including avoidance. Actual motion uses
+the saved speed/pulse and shorter decision deadlines; defaults are not increased.
 
 Admission reuses the trial preparation transaction. Cold preparation reserves
 camera, releases the previous producer, configures drive, obtains one consent,

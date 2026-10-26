@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from collections import deque
 
+from apps.motion.limits import MAX_DECISION_MS
+
 
 class Qualification:
     """Count unique fresh clear frames locally; cached pre-resume GO is insufficient."""
@@ -59,7 +61,7 @@ class Qualification:
             and decision.get("action") in {"go", "stop"}
             and decision.get("model_sha256") == self.policy["model_sha256"]
             and type(decision.get("valid_for_ms")) is int
-            and 0 < decision["valid_for_ms"] <= 200
+            and 0 < decision["valid_for_ms"] <= MAX_DECISION_MS
             and (self.validate_evidence is None or self.validate_evidence(decision))
         )
         if not valid:

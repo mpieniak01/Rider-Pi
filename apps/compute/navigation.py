@@ -22,6 +22,7 @@ from apps.compute.navigation_cycle import NavigationCycle
 from apps.compute.navigation_transport import NavigationHTTPTransport
 from apps.compute.operator_lifecycle import OperatorLifecycle
 from apps.compute.runners import FrameSource, selected_executor
+from apps.motion.limits import MAX_DECISION_MS
 from apps.safety.intent import read_service_intent, write_intent_status
 from common.bus import BusPub
 from common.compute_url import transport_options
@@ -389,7 +390,7 @@ class NavigationRunner(NavigationCycle):
             return False
         if any(type(decision.get(key)) is not int for key in ("protocol_version", "sequence", "config_revision")):
             return False
-        if type(decision.get("valid_for_ms")) is not int or not 0 <= decision["valid_for_ms"] <= 200:
+        if type(decision.get("valid_for_ms")) is not int or not 0 <= decision["valid_for_ms"] <= MAX_DECISION_MS:
             return False
         if decision.get("state") not in {"clear", "unknown"}:
             return False

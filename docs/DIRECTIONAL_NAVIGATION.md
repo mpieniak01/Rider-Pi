@@ -20,8 +20,10 @@ path and near guard; Pi independently validates the evidence. Captures from
 before/during a correction cannot authorize subsequent motion. The host holds
 the chosen side until fresh front clearance straightens the trajectory.
 
-Original 10-second ARM/trial, feedback watchdog and pulse limits remain:
-forward <=0.1 SDK / 150 ms, yaw 0.01–0.1 SDK / 50–150 ms.
+The 10-second ARM/trial and feedback watchdog remain. Pi advertises forward/yaw
+command magnitude up to 1 and pulses of 50–500 ms; a decision is valid for at most
+500 ms. Saved speed/pulse settings and shorter capture/decision deadlines still
+bound actual output. The shared absolute ceiling does not increase saved values.
 No implicit re-ARM or extension is introduced. Terminal avoidance_no_progress
 cannot resume on a later GO.
 

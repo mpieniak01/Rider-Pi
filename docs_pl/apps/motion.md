@@ -32,7 +32,14 @@ koperty. Owner: manual/follow_me/navigation. Aktuatory wymagają request_id,
 source, generation, rosnącego seq, ts oraz ttl_ms 1–500. API i wykonawca
 walidują niezależnie. Klient korzysta z server_time API; nie odświeża starego
 żądania. Jazda/obrót: [-1,1]. Impuls panelu z device_settings korzysta z
-deskryptora (0.01–1.0 s); polecenia ogólne/testowe mają osobne ograniczenia.
+deskryptora (0.01–0.5 s). Maksimum pojedynczego impulsu wynosi 500 ms również
+dla poleceń ogólnych i nawigacji; zakres konfiguracji nawigacji to 50–500 ms.
+Maksymalna wartość prędkości to 1.0. Prędkość/impuls manuala ogranicza dodatkowo
+zapisany profil kierunku; ograniczona świeżą decyzją nawigacja korzysta z własnej
+polityki, bez dziedziczenia wartości impulsu i maksimum kierunku manualnego.
+Rampy pozostają wspólne. Decyzja nawigacji jest ważna najwyżej 500 ms i nigdy
+poza pozostałym budżetem od przechwycenia obrazu; wygaśnięcie nadal zatrzymuje ruch.
+Zwiększenie zakresów nie zmienia zapisanych wartości ani nie udziela zgody na ruch.
 STOP/disarm/E-Stop nie wymagają
 świeżej koperty. STOP zmienia generację i usuwa cel. Nowszy cel zastępuje pending
 z terminalnym ACK; polecenia nie wracają po ARM.
@@ -100,3 +107,24 @@ autoryzację bramy oraz obsługę STOP i celu. Działają synchronicznie pod tą
 samą blokadą wykonawcy; nie tworzą drugiego właściciela UART.
 `calibration_schema` zawiera czystą walidację profilu, a `calibration_profiles`
 zachowuje publiczne importy oraz operacje zapisu i aktywacji.
+
+
+## Próby impulsów A/B/C (kontrakt v1)
+
+Wersjonowany katalog apps.motion.trial_profiles definiuje ręczne próby do przodu: A 1×500 ms, B 2×250 ms z przerwą 100 ms, C 5×100 ms z przerwami 100 ms. Siła oraz rampy pochodzą z aktualnych ustawień manualnych. Nastawa czasu kierunku musi odpowiadać recepturze; próba nie omija jej limitu. Zapisany profil bazowy operatora nie jest nadpisywany.
+
+Serię odmierza PulseTrials w istniejącym MotionExecutor, z tą samą bramą, zegarem monotonicznym i rampą. Nie tworzy dodatkowego właściciela UART ani procesu sterowania. Przerwa zaczyna się po zaakceptowaniu zerowego wyjścia; raportuje się faktyczne czasy. Limit całej próby 1500 ms nie jest odnawiany, koperta Startu nadal ma maksymalny TTL 500 ms. Potwierdzenie SDK nie potwierdza fizycznego przemieszczenia lub zatrzymania.
+
+Odczyt katalogu/statusu nie uzbraja i nie porusza robota. POST /api/motion/trials przekazuje jawną zgodę i plan przez standardowy kontrakt arm/manual/panel z trial_profile_id, trial_version 1, settings_revision i panel_id. Wykonawca sprawdza pełną kopertę, stan DISARMED, gotowość i rewizję przed rozpoczęciem. Te same znaczniki w standardowym kanale bezpieczeństwa mają tę samą walidację.
+
+GET /api/motion/trials/profiles i GET /api/motion/trials/<request_id> zwracają kontrakt rider.pulse_trials v1. Status wykonawcy zawiera pulse_trials.current oraz ograniczoną historię. Po normalnym zakończeniu kończy się uprawnienie próby. STOP/E-Stop, nowa generacja, anulowanie lub nowe sterowanie ręczne usuwają całą pozostałą serię; opóźniona odpowiedź nie może jej wznowić. Powtórzony request_id nie wykonuje prób ponownie.
+
+Testy automatyczne korzystają wyłącznie z atrap czasu, adaptera i BUS. Wdrożenie oraz odczyty GET nie są zgodą na fizyczną próbę. Optymalizacja pętli i odczytów usług pozostaje odrębnym zakresem.
+
+
+Przy odczycie starszych ustawień i nazwanych profili poprawne wcześniej impulsy
+powyżej 500 ms, do dawnego maksimum 1 s, są skracane do 500 ms. Migracja zwiększa
+rewizję raz i zachowuje pozostałe nastawy. Jeśli krótszy impuls nie osiągnąłby
+zapisanego minimum kierunku, minimum jest obniżane do osiągalnego szczytu;
+prędkość zadana i rampy nie są zwiększane. Niepoprawne stare dane nadal są
+odrzucane. Nowe zapisy ponad 500 ms nie korzystają z migracji i są odrzucane.

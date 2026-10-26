@@ -22,6 +22,7 @@ from apps.motion.dynamics import RampLimits
 from apps.motion.executor_admission import ExecutorAdmission
 from apps.motion.main import MotionController, _make_adapter
 from apps.motion.operator_requests import OperatorRequests
+from apps.motion.pulse_trials import PulseTrials
 from apps.motion.sensor_quality import SensorSamples
 from apps.safety.gate import ACTUATORS, MotionGate
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
@@ -59,6 +60,7 @@ class MotionExecutor(ExecutorAdmission):
             instance_id=self.instance_id,
             simulated=getattr(self.adapter, "simulated", False),
         )
+        self.trials = PulseTrials(self)
         self.last_output = 0.0
         self.output_generation = None
         self.output_command_generation = None
@@ -199,6 +201,7 @@ class MotionExecutor(ExecutorAdmission):
             recent_acks=list(self.recent_acks),
             simulated=bool(getattr(self.adapter, "simulated", False)),
             moving=not self.controller.stopped,
+            pulse_trials=self.trials.snapshot(),
             intent_mode=getattr(self.controller, "intent_mode", "pulse"),
             active_source=self.intent_source if self.controller.deadline > self.gate.clock() else None,
             agent_manual_active=bool(self.intent_source == 'manual' and self.controller.deadline > self.gate.clock()),
@@ -340,6 +343,8 @@ class MotionExecutor(ExecutorAdmission):
             return self._apply(payload, topic=topic)
         try:
             with manual_settings.locked(blocking=False):
+                if isinstance(payload, dict) and ("trial_profile_id" in payload or "trial_version" in payload):
+                    return self.trials.admit(canonical_command(topic, payload))
                 return self._apply(payload, topic=topic)
         except (OSError, ValueError, TypeError) as exc:
             return self._ack(payload if isinstance(payload, dict) else {}, "rejected", str(exc))
@@ -422,6 +427,7 @@ class MotionExecutor(ExecutorAdmission):
             if pending is not None:
                 self._ack(pending, "rejected", self.gate.reason)
             self.publish_status(force=True)
+        self.trials.guard()
         executed = self._tick_controller(dt)
         if self.gate.reason == "actuator_failed":
             self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
@@ -430,6 +436,7 @@ class MotionExecutor(ExecutorAdmission):
             self.output_command_generation = self.gate.generation
             self.publish_output()
         self._complete_pending(executed)
+        self.trials.tick()
         self.publish_status()
 
     def process_batch(self, messages):
@@ -457,6 +464,7 @@ class MotionExecutor(ExecutorAdmission):
         poll(self)
 
     def close(self, reason="executor_shutdown"):
+        self.trials.finish("cancelled", reason)
         self.shutdown = True
         self.pending = None
         self.gate.disarm(reason)

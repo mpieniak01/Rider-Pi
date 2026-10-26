@@ -104,3 +104,12 @@ def decision_feedback_deadline(command: dict, now: float, *, timed_navigation: b
     if deadline < decision or not 0 < deadline - now <= 0.5:
         raise ValueError("decision_feedback_deadline_expired")
     return deadline
+
+
+def bounded_navigation(command):
+    """Navigation owns its configured speed/pulse; manual presets remain manual."""
+    return (
+        command.get("source") == "navigation"
+        and command.get("execution_context") == "panel"
+        and command.get("decision_deadline_monotonic") is not None
+    )

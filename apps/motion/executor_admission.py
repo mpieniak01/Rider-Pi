@@ -1,7 +1,12 @@
 """Ordered admission and actuation stages for the sole motion executor."""
 
 from apps.motion import manual_settings
-from apps.motion.actuator_contract import decision_duration, decision_feedback_deadline, validate_actuator
+from apps.motion.actuator_contract import (
+    bounded_navigation,
+    decision_duration,
+    decision_feedback_deadline,
+    validate_actuator,
+)
 from apps.safety.gate import ACTUATORS
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
 from common.agent_control import verify_command
@@ -110,7 +115,7 @@ class ExecutorAdmission:
     def _validated_intent(self, command, action, mode, is_actuator, agent):
         try:
             values = validate_actuator(command)
-            if action in {"move", "turn"}:
+            if action in {"move", "turn"} and not bounded_navigation(command):
                 manual_settings.validate_command(self.controls, values, mode=mode)
         except ValueError as exc:
             self._cancel_invalid_intent(command, is_actuator, agent)
@@ -172,6 +177,7 @@ class ExecutorAdmission:
         return reason, None
 
     def _execute_authorized(self, command, action, values, mode, reason):
+        self.trials.override()
         if action in OPERATOR_ACTIONS:
             return self._ack(command, "executed", reason, hardware_stop_sent=True)
         if action in {"stop", "disarm", "estop", "clear_estop"}:

@@ -9,6 +9,7 @@ import time
 import uuid
 from collections.abc import Callable
 
+from apps.motion.limits import MAX_DURATION_S as MAX_DURATION_S
 from apps.safety import estop
 from apps.safety.journey import JourneyConsent, validate_arm as validate_journey_arm
 from apps.safety.manual_intervention import ManualIntervention, validate as validate_intervention
@@ -19,7 +20,6 @@ OWNERS = frozenset({"manual", "follow_me", "navigation"})
 ACTUATORS = frozenset({"move", "turn", "balance", "height", "action", "stabilization"})
 MAX_LEASE_S = 30.0
 MAX_TTL_MS = 500.0
-MAX_DURATION_S = 0.25
 
 
 def finite_number(value, name: str) -> float:

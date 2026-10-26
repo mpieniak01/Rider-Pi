@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+from apps.motion.limits import MAX_DURATION_S
 from apps.safety.journey import validate_arm as validate_journey_arm
 from apps.safety.manual_intervention import validate as validate_intervention
 from apps.safety.operator_control import ACTIONS as OPERATOR_ACTIONS
@@ -15,7 +16,7 @@ from common.agent_control import is_agent, verify_command
 from common.bus import TOPIC_MOTION_COMMAND, BusPub
 
 TOPIC_COMMAND = TOPIC_MOTION_COMMAND
-SAFE_MAX_DURATION = 0.25
+SAFE_MAX_DURATION = MAX_DURATION_S
 OWNERS = frozenset({"manual", "follow_me", "navigation"})
 ACTUATORS = frozenset({"move", "turn", "height", "balance", "action"})
 
