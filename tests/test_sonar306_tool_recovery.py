@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_unchanged_preview_retains_both_restart_flags_before_backend_calls(tmp_path, monkeypatch):
+    """Verify unchanged preview retains both restart flags before backend calls."""
     function = runpy.run_path(str(ROOT / "scripts/dev_pi-deploy.py"))["_unchanged_preview"]
     namespace = function.__globals__
     previous = {"restart_api": False, "restart_motion": False}
@@ -50,6 +51,7 @@ def test_unchanged_preview_retains_both_restart_flags_before_backend_calls(tmp_p
 def test_failed_preview_restores_record_before_services_and_preserves_original_failure(
     tmp_path, monkeypatch, has_previous
 ):
+    """Verify failed preview restores record before services and preserves original failure."""
     function = runpy.run_path(str(ROOT / "scripts/dev_pi-deploy.py"))["_switch_preview_checkout"]
     namespace = function.__globals__
     previous = {"commit": "old"} if has_previous else None

@@ -29,6 +29,7 @@ def test_explicit_scopes_never_admit_private_data(deploy, path):
 
 
 def test_unchanged_preview_journals_restart_intent_before_backend_failure(deploy, monkeypatch, tmp_path):
+    """Verify unchanged preview journals restart intent before backend failure."""
     function = deploy["_unchanged_preview"]
     namespace = function.__globals__
     record = {"restart_motion": False, "restart_api": False, "commit": "a" * 40}

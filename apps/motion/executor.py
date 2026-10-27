@@ -272,6 +272,7 @@ class MotionExecutor(ExecutorAdmission):
             self.last_snapshot = now
 
     def _ack(self, command, status, reason, **details):
+        """Record command identity, requested maneuver and the current output without claiming physical completion."""
         self.last_ack = {
             "contract_id": "rider.motion.ack",
             "contract_version": 1,

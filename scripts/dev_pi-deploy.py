@@ -186,12 +186,24 @@ def write_record(path, data):
 
 
 def motion_update_preflight():
-    """Do not remove the executor runtime directory under an active producer."""
+    """Require stopped producers with no main or cleanup process before motion update."""
     for unit in ("rider-venom-navigation.service", "rider-venom-perception.service"):
-        if run(["systemctl", "is-active", unit], check=False).returncode == 0:
+        result = run(
+            ["systemctl", "show", unit, "--property=LoadState,ActiveState,SubState,MainPID,ControlPID"],
+            check=False,
+        )
+        state = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        if (
+            result.returncode != 0
+            or state.get("LoadState") not in {"loaded", "not-found"}
+            or state.get("ActiveState") not in {"inactive", "failed"}
+            or state.get("SubState") not in {"dead", "failed"}
+            or state.get("MainPID") != "0"
+            or state.get("ControlPID") != "0"
+        ):
             raise RuntimeError(
                 "Pause navigation/perception goals before updating motion; "
-                "stopping the executor removes their shared runtime state."
+                "cannot confirm stopped producers sharing runtime state."
             )
 
 
@@ -254,6 +266,7 @@ def _check_preview_origin(previous, base, current, branch):
 
 
 def _unchanged_preview(repo, record_path, request, previous, restart_required):
+    """Persist restart intent and restart only after confirming idle producers."""
     if request.get("restart_motion"):
         motion_update_preflight()
         if previous:
@@ -352,6 +365,7 @@ def _switch_preview_checkout(
     resource_scope,
     display_active,
 ):
+    """Stop the executor after preflight and restore prior records on checkout failure."""
     if request.get("restart_motion"):
         run(["systemctl", "is-active", MOTION_SERVICE])
         motion_update_preflight()
@@ -486,15 +500,16 @@ def release(repo, record_path, request):
     previous = read_record(record_path)
     current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
     base, target, paths = _release_files(repo, request, previous, current, branch)
+    if request.get("restart_motion"):
+        run(["systemctl", "is-active", MOTION_SERVICE])
+        motion_update_preflight()
+    display_active = resource_preflight() if request.get("resource_scope") else False
     release_record = record_path.with_name("rider-last-release.json")
     last_release = read_record(release_record)
     if base != target or not last_release or last_release["commit"] != target:
         write_record(release_record, {"previous": base, "commit": target})
     if request.get("restart_motion"):
-        run(["systemctl", "is-active", MOTION_SERVICE])
-        motion_update_preflight()
         run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
-    display_active = resource_preflight() if request.get("resource_scope") else False
     if request.get("resource_scope"):
         pause_resources()
     if previous:

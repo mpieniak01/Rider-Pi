@@ -130,6 +130,7 @@ def parameter_schema():
 
 
 def control_modes():
+    """Advertise device-owned gesture timing and supported in-place turn version."""
     return {
         "version": 1,
         "supported": ["pulse", "hold", "release"],

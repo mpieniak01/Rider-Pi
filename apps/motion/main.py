@@ -150,6 +150,7 @@ def _make_adapter(gate: MotionGate | None = None):
 
 class MotionController:
     def __init__(self, robot, gate: MotionGate | None = None, *, limits=None):
+        """Initialize ramp state and deadlines without granting motion authority."""
         self.curves = [CurveRamp(), CurveRamp()]
         self.curve_braking = [False, False]
         self.turn_in_place = False
@@ -166,6 +167,7 @@ class MotionController:
         self.reverse_until = None
 
     def _stop_immediate(self):
+        """Clear all targets and ramp state before issuing the hardware stop."""
         for curve in self.curves:
             curve.reset()
         self.curve_braking = [False, False]
@@ -193,9 +195,11 @@ class MotionController:
         remote_feedback_deadline=None,
         turn_in_place=False,
     ):
+        """Accept a bounded target, distinguishing operator pulses from timed manual goals."""
         if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
             return False
+        manual_panel = bool(panel_pulse and self.gate.owner == "manual" and self.gate.execution_context == "panel")
         panel_pulse = self._operator_panel_pulse(panel_pulse)
         if (
             not isinstance(mode, str)
@@ -203,7 +207,7 @@ class MotionController:
             or (mode != "pulse" and not panel_pulse)
         ):
             return False
-        if turn_in_place and (not panel_pulse or lx != 0):
+        if turn_in_place and (not manual_panel or lx != 0):
             return False
         self.turn_in_place = turn_in_place
         self.intent_mode = mode
@@ -335,6 +339,7 @@ class MotionController:
         return True
 
     def _ramp_targets(self):
+        """Brake translation before in-place yaw and preserve zero-crossing reversal."""
         targets = [self.t_lx, self.t_az]
         if self.turn_in_place and self.o_lx != 0:
             # Finish translation before beginning the requested yaw.
@@ -354,6 +359,7 @@ class MotionController:
         # Remote navigation renews a continuous target with fresh bounded permits.
         # Pre-braking every short permit repeatedly restarts S curves near zero.
         # Expiry still bypasses ramps in expire_remote_decision/expire_goal.
+        """Apply the configured curve without pre-braking continuously renewed navigation permits."""
         if getattr(self, "intent_mode", "pulse") == "pulse" and self.remote_decision_deadline is None:
             if self.limits.ramp_mode:
                 if remaining <= abs(current) * curve_factor(self.limits.ramp_mode) / deceleration + dt:

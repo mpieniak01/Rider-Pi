@@ -92,6 +92,7 @@ def test_migration_profiles_and_reject_unknown_mode(executor):
 
 @pytest.mark.parametrize("mode", [0, 1, 2])
 def test_fresh_navigation_renewals_preserve_ramp_until_deadline(executor, mode):
+    """Verify fresh navigation renewals preserve ramp until deadline."""
     instance, clock = executor
     assert navigation_arm(instance)["status"] == "executed"
     row = settings.read()
