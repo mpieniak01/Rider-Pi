@@ -24,6 +24,7 @@ export class SafetyPanel {
     this.interactive = interactive; this.upperOffset = 0; this.lowerOffset = 0;
     this.lastArmed = false; this.lastConfirmed = null; this.observationFailed = false; this.state = null; this.onChange = onChange; this.seq = -1; this.generation = null;
     this.history = []; this.pending = new Map(); this.mutating = false;
+    this.pendingGesture = null;
     this.revokedGenerations = new Set();
     this.clockReady = false; this.clockObserved = 0;
     this.held = new HeldMotion({
@@ -183,7 +184,7 @@ export class SafetyPanel {
     return command;
   }
   recordCommand(command,exempt) {
-    if (exempt) { this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
+    if (exempt) { this.pendingGesture = null; this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
     const submittedAt = this.commandTime();
     const entry = { command, submittedAt, status: 'sending' };
     this.history.unshift(entry); this.history = this.history.slice(0, 20); this.pending.set(command.request_id, entry);
@@ -226,25 +227,35 @@ export class SafetyPanel {
     } finally { if (!exempt) { this.mutating = false; } this.renderHistory(); void this.poller.refresh(); }
   }
   async sendIntent(intent, valid) {
-    if (intent.mode==='release' && this.supportsGesture('move')
+    const pending=intent.mode==='release' ? this.pendingGesture : null;
+    if (intent.mode==='release' && this.supportsGesture('move') && !pending
       && !(this.state?.state==='ARMED' && this.state.owner==='manual' && this.state.panel_control?.holder===this.panelId)) return;
     const revision=this.controls?.state?.revision;
-    const generation=this.state?.generation, initialSeq=this.seq;
+    const generation=pending?.generation??this.state?.generation, initialSeq=this.seq;
     const permittedAtStart=this.can('manual',['left','right'].includes(intent.direction)?'turn':'move');
     const neutralAllowed=intent.mode==='release' && permittedAtStart;
     await prepareMutation({ control: true });
     const check=()=>{
+      if(pending){
+        if(!valid() || this.pendingGesture!==pending || !this.clockFresh())throw new Error('manual_intent_cancelled_or_stale');
+        return;
+      }
       if(!valid() || (this.state && generation!==this.state.generation) || revision!==this.controls?.state?.revision
         || (!(neutralAllowed && !this.state && Date.now()/1000-this.clockObserved<=3) && !this.can('manual',['left','right'].includes(intent.direction)?'turn':'move')))
         throw new Error('manual_intent_cancelled_or_stale');
     };
     check();
-    const params={...this.controls.pulse(intent.direction),mode:intent.mode};
+    const params=pending
+      ?{device_settings:true,direction:pending.direction,settings_revision:pending.settings_revision,mode:'release',
+        operator_intervention_version:1,intervene:true,supersedes_operation_id:pending.request_id}
+      :{...this.controls.pulse(intent.direction),mode:intent.mode};
     if(neutralAllowed && !this.state)this.seq=Math.max(this.seq,initialSeq);
     // New release intent: create its envelope only after negotiation and validation.
-    const command=neutralAllowed && !this.state
+    const command=pending || neutralAllowed && !this.state
       ?this.buildEnvelope('move',params,generation):this.envelope('move',params);
+    if(intent.mode!=='release')this.pendingGesture=command.operator_intervention_version===1 && intent.mode==='hold'?command:null;
     const result=await request('/api/control',{method:'POST',body:command,timeout:500,beforeSend:check});
+    if(pending && this.pendingGesture===pending)this.pendingGesture=null;
     if(result.data.safety)this.update(result.data.safety);
     if(result.data.ack?.status==='rejected')throw new Error(result.data.ack.reason||'motion_rejected');
     text('operator-message',intentLabel(intent.mode));

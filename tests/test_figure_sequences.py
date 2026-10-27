@@ -79,6 +79,27 @@ def test_each_own_recipe_finishes_zero_and_disarmed_without_native_actions(execu
 
 
 @pytest.mark.parametrize("identifier", list(NAMES))
+def test_steps_keep_the_planned_timeline_with_non_divisible_ticks(executor, identifier):
+    instance, clock = executor
+    payload, _ = start(instance, identifier)
+    started = clock.now
+    expected = instance.figures.current["duration_ms"]
+    for index in range(300):
+        if not instance.figures.active:
+            break
+        if index % 6 == 0:
+            assert keepalive(instance, payload)["status"] == "executed"
+        clock.now += 0.027
+        instance.poll_sensors()
+        instance.tick(0.027)
+    row = instance.figures.current
+    assert row["phase"] == "completed", row
+    assert expected <= (clock.now - started) * 1000 <= expected + 27.001
+    assert instance.controller.stopped
+    assert instance.gate.state == "DISARMED"
+
+
+@pytest.mark.parametrize("identifier", list(NAMES))
 @pytest.mark.parametrize("when", [0.04, 0.8, 1.6])
 def test_stop_cancels_pose_and_wheel_steps_without_return_or_restart(executor, identifier, when):
     instance, clock = executor

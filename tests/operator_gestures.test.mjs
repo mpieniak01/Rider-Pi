@@ -42,6 +42,32 @@ test('an unsaved drive draft does not block an independent height target',async(
  await f.panel.send('height',{height:95});
  assert.equal(f.calls.filter(row=>row.method==='POST').length,1);
 });
+
+for(const confirmed of [false,true]){
+ test('release cancels its first pending hold even when ownership '+(confirmed?'arrives late':'is not confirmed'),async()=>{
+  const f=await fixture(ready());controls(f);
+  f.panel.controls.pulse=direction=>({direction,device_settings:true,settings_revision:45});
+  await f.panel.sendIntent({direction:'forward',mode:'hold'},()=>true);
+  const original=f.calls.find(row=>row.method==='POST').body;
+  if(confirmed)f.setState({...ready(),state:'ARMED',owner:'manual',generation:'adopted',panel_control:{version:1,holder:f.panel.panelId}});
+  await f.panel.sendIntent({direction:'forward',mode:'release'},()=>true);
+  const posts=f.calls.filter(row=>row.method==='POST');
+  assert.equal(posts.length,2);
+  const release=posts[1].body;
+  assert.equal(release.mode,'release');assert.equal(release.operator_intervention_version,1);
+  assert.equal(release.supersedes_operation_id,original.request_id);
+  assert.equal(release.generation,original.generation);
+  assert.equal(release.panel_id,original.panel_id);
+  assert.notEqual(release.request_id,original.request_id);
+  assert.equal(release.operator_consent,undefined);
+ });
+}
+test('a release with no own pending request cannot borrow another panel authority',async()=>{
+ const f=await fixture({...ready(),state:'ARMED',owner:'manual',panel_control:{version:1,holder:'other-panel'}});controls(f);
+ await f.panel.sendIntent({direction:'forward',mode:'release'},()=>true);
+ assert.equal(f.calls.filter(row=>row.method==='POST').length,0);
+});
+
 test('a stale armed operator state does not authorize a new explicit gesture',async()=>{
  const f=await fixture({...ready(),state:'ARMED',owner:'manual',arming_mode:'operator',execution_context:'panel',stale:true});controls(f);
  assert.equal(f.panel.can('manual','height'),false);

@@ -201,7 +201,8 @@ class FigureSequences:
         if self.index >= len(self.steps):
             self.finish("completed", "sequence_completed")
             return False
-        self.step_started, self.next_renewal = now, now
+        planned = self.started if self.index == 0 else self.step_started + self.steps[self.index - 1]["ms"] / 1000
+        self.step_started, self.next_renewal = min(planned, now), now
         self.origins = dict(self.targets)
         self.current.update(phase="running", step=self.index + 1)
         self._event("step_started", step=self.index + 1, target=dict(self.steps[self.index]))

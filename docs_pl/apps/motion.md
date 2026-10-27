@@ -122,12 +122,10 @@ GET /api/motion/trials/profiles i GET /api/motion/trials/<request_id> zwracają 
 Testy automatyczne korzystają wyłącznie z atrap czasu, adaptera i BUS. Wdrożenie oraz odczyty GET nie są zgodą na fizyczną próbę. Optymalizacja pętli i odczytów usług pozostaje odrębnym zakresem.
 
 
-Przy odczycie starszych ustawień i nazwanych profili poprawne wcześniej impulsy
-powyżej 500 ms, do dawnego maksimum 1 s, są skracane do 500 ms. Migracja zwiększa
-rewizję raz i zachowuje pozostałe nastawy. Jeśli krótszy impuls nie osiągnąłby
-zapisanego minimum kierunku, minimum jest obniżane do osiągalnego szczytu;
-prędkość zadana i rampy nie są zwiększane. Niepoprawne stare dane nadal są
-odrzucane. Nowe zapisy ponad 500 ms nie korzystają z migracji i są odrzucane.
+Odczyt starszych ustawień i nazwanych profili zachowuje poprawne impulsy do
+1000 ms bez skracania, zmiany rewizji ani pozostałych nastaw. Nowe zapisy
+korzystają z tego samego zakresu do 1 s. Niepoprawne dane oraz impulsy ponad
+1000 ms nadal są odrzucane.
 
 ### Odnawiane decyzje nawigacji a rampy
 
@@ -193,4 +191,4 @@ nadal wymaga wcześniejszego ARM. STOP, E-Stop, rewizja ustawień i świeżość
 koperty obowiązują bez zmian. Odpowiedź opisuje przyjęte polecenie, nie pomiar
 ani potwierdzone fizyczne osiągnięcie wysokości.
 
-Natywne panele Sterowanie i Kalibracja wysyłają jawne gesty jazdy i postawy z własnym panel_id. Edycja wysokości pozostaje lokalna do kliknięcia Ustaw. Kompensacja przechyłu używa operator_posture_intervention_version=1 i ścisłej wartości boolean. Odczyt lub wejście na stronę nie przyznaje uprawnień. STOP unieważnia stare polecenia; E-Stop pozostaje zatrzaśnięty.
+Natywne panele Sterowanie i Kalibracja wysyłają jawne gesty jazdy i postawy z własnym panel_id. Edycja wysokości pozostaje lokalna do kliknięcia Ustaw. Stan ogłasza operator_posture_intervention_version=1 dla kompensacji przechyłu; jej polecenie używa operator_intervention_version=1 i ścisłej wartości boolean. Odczyt lub wejście na stronę nie przyznaje uprawnień. STOP unieważnia stare polecenia; E-Stop pozostaje zatrzaśnięty.
