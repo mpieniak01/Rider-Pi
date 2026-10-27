@@ -2,6 +2,7 @@
 
 from flask import current_app, jsonify, request
 
+from apps.motion.limits import MAX_DECISION_MS
 from services import navigation_config
 
 
@@ -34,7 +35,7 @@ def _present_config(config):
             "max_speed": navigation_config.MAX_SPEED,
             "max_turn_speed": navigation_config.MAX_SPEED,
             "max_turn_ms": navigation_config.MAX_MOTION_MS,
-            "max_decision_ms": navigation_config.MAX_MOTION_MS,
+            "max_decision_ms": MAX_DECISION_MS,
         },
         "input_region_version": 1,
         "approval_without_restart_version": 1 if continuous_approval else 0,

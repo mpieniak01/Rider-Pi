@@ -153,3 +153,17 @@ Puszczenie przycisku, STOP i zmiana generacji zachowują dotychczasowe znaczenie
 control_modes.in_place_turn_version=1 negocjuje dostępność manewru, a ACK
 zawiera requested.turn_mode. Potwierdzenie SDK nie dowodzi fizycznego obrotu
 wokół środka; wymagana jest obserwacja kół, kąta i przesunięcia robota.
+
+
+### Impuls do jednej sekundy
+
+Wspólny maksymalny czas pojedynczego impulsu wynosi 1000 ms (1 s).
+Pi publikuje ten zakres w deskryptorach ustawień manualnych oraz limitach
+polityki automatu; panel zachowuje bieżące zapisane wartości i pokazuje zakres
+z urządzenia. Zwiększenie maksimum nie wydłuża samoczynnie zapisanych impulsów.
+
+Jednorazowy ręczny impuls zachowuje swój zadany czas do 1 s. Przytrzymanie nadal
+wymaga odnawiania z limitem 500 ms, a żądania mają oddzielną ważność do 500 ms.
+STOP i rozbrojenie przerywają impuls natychmiast. Decyzje autonomiczne nadal
+wygasają zgodnie z własnym terminem i świeżością obrazu, również gdy ustawione
+maksimum impulsu jest wyższe.

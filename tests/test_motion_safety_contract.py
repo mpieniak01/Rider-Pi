@@ -71,7 +71,7 @@ def test_stop_invalidates_old_generation_and_clears_target(executor):
         ({"seq": -1}, "stale_sequence"),
         ({"source": "navigation"}, "owner_mismatch"),
         ({"vx": float("nan")}, "invalid_vx"),
-        ({"duration": 1.0}, "motion_limits_exceeded"),
+        ({"duration": 1.001}, "motion_limits_exceeded"),
     ],
 )
 def test_invalid_or_delayed_goals_never_execute(executor, fields, reason):

@@ -297,7 +297,7 @@ def test_interaction_defaults_are_shared_configuration_not_motion_permission(pro
     saved = store.save_profile(row)
     assert store.read_profile(saved["digest"])["interaction"] == row["interaction"]
     assert store.read_active() is None
-    for key, invalid in [("linear_speed", True), ("turn_speed", 1.1), ("pulse_duration", 0.501)]:
+    for key, invalid in [("linear_speed", True), ("turn_speed", 1.1), ("pulse_duration", 1.001)]:
         changed = copy.deepcopy(row)
         changed["interaction"][key] = invalid
         with pytest.raises(ValueError, match="interaction"):

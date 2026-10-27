@@ -236,7 +236,12 @@ class MotionController:
         self.remote_decision_deadline = remote_decision_deadline
         self.remote_feedback_deadline = remote_feedback_deadline
         self.last_cmd_ts = self.gate.clock()
-        self.deadline = self.last_cmd_ts + (duration if panel_pulse else min(duration, self.limits.watchdog_s))
+        # An explicit manual pulse owns its bounded duration. Continuous and
+        # autonomous producers still require their original watchdog renewal.
+        manual_pulse = self.gate.owner == "manual" and mode == "pulse" and remote_decision_deadline is None
+        self.deadline = self.last_cmd_ts + (
+            duration if panel_pulse or manual_pulse else min(duration, self.limits.watchdog_s)
+        )
         return True
 
     def _operator_panel_pulse(self, panel_pulse):
