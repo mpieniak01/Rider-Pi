@@ -32,6 +32,7 @@ def test_unchanged_preview_retains_both_restart_flags_before_backend_calls(tmp_p
         assert json.loads(path.read_text())["restart_api"] is True
         calls.append("api")
 
+    monkeypatch.setitem(namespace, "motion_update_preflight", lambda: None)
     monkeypatch.setitem(namespace, "run", operation)
     monkeypatch.setitem(namespace, "restart_api", api)
     monkeypatch.setitem(namespace, "status", lambda *_args: {"commit": "unchanged"})
@@ -70,6 +71,7 @@ def test_failed_preview_restores_record_before_services_and_preserves_original_f
         events.append(args)
 
     monkeypatch.setitem(namespace, "git", git)
+    monkeypatch.setitem(namespace, "motion_update_preflight", lambda: None)
     monkeypatch.setitem(namespace, "run", operation)
     monkeypatch.setitem(namespace, "pause_resources", lambda: events.append("pause"))
     monkeypatch.setitem(namespace, "restart_api", lambda: events.append("api"))

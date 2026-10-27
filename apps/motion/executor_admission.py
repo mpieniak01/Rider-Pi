@@ -271,6 +271,7 @@ class ExecutorAdmission:
             mode=mode,
             remote_decision_deadline=command.get("decision_deadline_monotonic"),
             remote_feedback_deadline=feedback,
+            **({"turn_in_place": True} if command.get("turn_mode") == "in_place" else {}),
         ):
             if journey:
                 self.gate.disarm("motion_submission_failed")

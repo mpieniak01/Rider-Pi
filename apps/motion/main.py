@@ -152,6 +152,7 @@ class MotionController:
     def __init__(self, robot, gate: MotionGate | None = None, *, limits=None):
         self.curves = [CurveRamp(), CurveRamp()]
         self.curve_braking = [False, False]
+        self.turn_in_place = False
         self.robot = robot
         self.gate = gate or MotionGate()
         self.limits = limits or DYNAMICS
@@ -168,6 +169,7 @@ class MotionController:
         for curve in self.curves:
             curve.reset()
         self.curve_braking = [False, False]
+        self.turn_in_place = False
         self.t_lx = self.t_az = self.o_lx = self.o_az = 0.0
         self.reversing = False
         self.reverse_until = None
@@ -189,6 +191,7 @@ class MotionController:
         mode="pulse",
         remote_decision_deadline=None,
         remote_feedback_deadline=None,
+        turn_in_place=False,
     ):
         if not self.limits.valid or not self.gate.can_actuate():
             self.stop()
@@ -200,6 +203,9 @@ class MotionController:
             or (mode != "pulse" and not panel_pulse)
         ):
             return False
+        if turn_in_place and (not panel_pulse or lx != 0):
+            return False
+        self.turn_in_place = turn_in_place
         self.intent_mode = mode
         duration_limit = MAX_PANEL_DURATION_S if panel_pulse else MAX_DURATION_S
         if (
@@ -330,6 +336,9 @@ class MotionController:
 
     def _ramp_targets(self):
         targets = [self.t_lx, self.t_az]
+        if self.turn_in_place and self.o_lx != 0:
+            # Finish translation before beginning the requested yaw.
+            return [0.0, 0.0]
         if self.reversing:
             targets = [0.0, 0.0]
             if self.o_lx == 0 and self.o_az == 0:

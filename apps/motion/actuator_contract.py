@@ -55,6 +55,15 @@ def _action_values(command):
 
 def validate_actuator(command: dict) -> dict:
     action = command.get("action")
+    if "turn_mode" in command and not (
+        command["turn_mode"] == "in_place"
+        and action == "move"
+        and command.get("device_settings") is True
+        and command.get("direction") in {"left", "right"}
+        and command.get("source") == "manual"
+        and command.get("execution_context") == "panel"
+    ):
+        raise ValueError("invalid_turn_mode")
     if not isinstance(action, str):
         raise ValueError("unknown_action")
     if action in {"move", "turn"}:
