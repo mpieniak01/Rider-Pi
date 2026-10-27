@@ -181,3 +181,14 @@ jazdę poprzedni obrót jest zerowany przed przyjęciem nowego celu.
 SDK STOP jest poleceniem zerowej prędkości kontrolera, a nie udokumentowanym
 niezależnym hamulcem kół. Kod nie stosuje przeciwimpulsu i nie dowodzi braku
 poślizgu ani zatrzymania fizycznego; to wymaga osobnego odbioru na podłożu.
+
+### Ręczna zmiana wysokości jednym poleceniem
+
+Wykonawca ogłasza `operator_height_intervention_version: 1`. Jawne
+`height` z `operator_intervention_version: 1`, zgodą operatora, planem,
+`intervene: true`, `device_settings: true` i właścicielem manual/operator/panel
+przejmuje sterowanie w jednej transakcji. Zatrzymuje wcześniejszą jazdę przed
+wysłaniem wysokości 75–115 SDK. Zwykłe polecenie wysokości bez tego kontraktu
+nadal wymaga wcześniejszego ARM. STOP, E-Stop, rewizja ustawień i świeżość
+koperty obowiązują bez zmian. Odpowiedź opisuje przyjęte polecenie, nie pomiar
+ani potwierdzone fizyczne osiągnięcie wysokości.
