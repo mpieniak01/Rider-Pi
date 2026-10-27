@@ -94,6 +94,17 @@ class _RealAdapter:
     def capabilities(self):
         return self._ada.capabilities()
 
+    def figure_axes(self):
+        inventory = getattr(self._ada, "available_methods", None)
+        methods = inventory() if callable(inventory) else []
+        return {"height": "rider_height" in methods, "roll": "rider_roll" in methods}
+
+    def set_roll(self, value):
+        # Only the existing UART owner can execute a bounded recipe posture.
+        if not finite(value) or not -5 <= value <= 5 or not self._ada._allowed():
+            return False
+        return self._ada._call("rider_roll", value)
+
     def move(self, lx=0.0, az=0.0):
         # yaw<0 is left, matching HTTP and tracking controllers.
         yaw = self._ada.spin("left" if az < 0 else "right", abs(az))

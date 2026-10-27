@@ -32,8 +32,8 @@ koperty. Owner: manual/follow_me/navigation. Aktuatory wymagają request_id,
 source, generation, rosnącego seq, ts oraz ttl_ms 1–500. API i wykonawca
 walidują niezależnie. Klient korzysta z server_time API; nie odświeża starego
 żądania. Jazda/obrót: [-1,1]. Impuls panelu z device_settings korzysta z
-deskryptora (0.01–0.5 s). Maksimum pojedynczego impulsu wynosi 500 ms również
-dla poleceń ogólnych i nawigacji; zakres konfiguracji nawigacji to 50–500 ms.
+deskryptora (0.01–1.0 s). Maksimum pojedynczego impulsu wynosi 1000 ms również
+dla poleceń ogólnych i nawigacji; zakres konfiguracji nawigacji to 50–1000 ms.
 Maksymalna wartość prędkości to 1.0. Prędkość/impuls manuala ogranicza dodatkowo
 zapisany profil kierunku; ograniczona świeżą decyzją nawigacja korzysta z własnej
 polityki, bez dziedziczenia wartości impulsu i maksimum kierunku manualnego.

@@ -9,6 +9,7 @@ from .contract_registry import contract_for
 _DOMAIN_TARGETS = {
     "rider.safety": "motion-executor",
     "rider.pulse_trials": "motion-executor",
+    "rider.figures": "motion-executor",
     "rider.calibration": "calibration",
     "rider.odometry": "odometry",
     "rider.navigation": "navigator",

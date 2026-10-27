@@ -178,6 +178,7 @@ class ExecutorAdmission:
 
     def _execute_authorized(self, command, action, values, mode, reason):
         self.trials.override()
+        self.figures.override()
         if action in OPERATOR_ACTIONS:
             return self._ack(command, "executed", reason, hardware_stop_sent=True)
         if action in {"stop", "disarm", "estop", "clear_estop"}:
