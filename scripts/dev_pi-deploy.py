@@ -185,6 +185,16 @@ def write_record(path, data):
     os.replace(temporary, path)
 
 
+def motion_update_preflight():
+    """Do not remove the executor runtime directory under an active producer."""
+    for unit in ("rider-venom-navigation.service", "rider-venom-perception.service"):
+        if run(["systemctl", "is-active", unit], check=False).returncode == 0:
+            raise RuntimeError(
+                "Pause navigation/perception goals before updating motion; "
+                "stopping the executor removes their shared runtime state."
+            )
+
+
 def restart_api():
     """Restart only the API service and wait for its HTTP health endpoint."""
     run(["sudo", "-n", "systemctl", "restart", API_SERVICE])
@@ -245,6 +255,7 @@ def _check_preview_origin(previous, base, current, branch):
 
 def _unchanged_preview(repo, record_path, request, previous, restart_required):
     if request.get("restart_motion"):
+        motion_update_preflight()
         if previous:
             write_record(record_path, dict(previous, restart_motion=True))
         run(["sudo", "-n", "systemctl", "restart", MOTION_SERVICE])
@@ -343,6 +354,7 @@ def _switch_preview_checkout(
 ):
     if request.get("restart_motion"):
         run(["systemctl", "is-active", MOTION_SERVICE])
+        motion_update_preflight()
         run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
     try:
         write_record(record_path, record)
@@ -416,6 +428,7 @@ def rollback(repo, record_path):
     if git(repo, "rev-parse", record["branch"]) != record["base"]:
         raise RuntimeError("Saved main changed; preserve it before rollback.")
     if record.get("restart_motion") and current == record["commit"] and branch == record["preview_branch"]:
+        motion_update_preflight()
         run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
     if record.get("resource_scope"):
         resource_preflight()
@@ -479,6 +492,7 @@ def release(repo, record_path, request):
         write_record(release_record, {"previous": base, "commit": target})
     if request.get("restart_motion"):
         run(["systemctl", "is-active", MOTION_SERVICE])
+        motion_update_preflight()
         run(["sudo", "-n", "systemctl", "stop", MOTION_SERVICE])
     display_active = resource_preflight() if request.get("resource_scope") else False
     if request.get("resource_scope"):

@@ -353,7 +353,8 @@ def test_motion_preview_stops_before_checkout_and_restarts(repos, monkeypatch):
     def run(args, *a, **kwargs):
         if "systemctl" in args:
             calls.append((tuple(args), repos.command(repos.device, "rev-parse", "HEAD")))
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+            inactive_producer = args[-1] in {"rider-venom-navigation.service", "rider-venom-perception.service"}
+            return SimpleNamespace(returncode=3 if inactive_producer else 0, stdout="", stderr="")
         return original_run(args, *a, **kwargs)
 
     monkeypatch.setitem(module["preview"].__globals__, "run", run)
@@ -525,3 +526,28 @@ def test_preview_rejects_added_development_dependencies_even_when_later_removed(
     error = repos.deploy("preview", target, bundle, check=False)
     assert "separate environment plan" in error
     repos.assert_base()
+
+
+@pytest.mark.parametrize("active", ["rider-venom-navigation.service", "rider-venom-perception.service"])
+def test_motion_update_preserves_active_analysis(monkeypatch, active):
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=0 if args[-1] == active else 3)
+
+    monkeypatch.setitem(module["motion_update_preflight"].__globals__, "run", run)
+    with pytest.raises(RuntimeError, match="shared runtime state"):
+        module["motion_update_preflight"]()
+    assert all(args[:2] == ["systemctl", "is-active"] for args in calls)
+
+
+def test_motion_update_allows_inactive_producers(monkeypatch):
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    monkeypatch.setitem(
+        module["motion_update_preflight"].__globals__,
+        "run",
+        lambda args, **kwargs: SimpleNamespace(returncode=3),
+    )
+    module["motion_update_preflight"]()

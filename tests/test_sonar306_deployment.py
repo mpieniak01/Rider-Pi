@@ -40,6 +40,7 @@ def test_unchanged_preview_journals_restart_intent_before_backend_failure(deploy
         assert command == ["sudo", "-n", "systemctl", "restart", "motion-executor.service"]
         raise RuntimeError("inert restart failed")
 
+    monkeypatch.setitem(namespace, "motion_update_preflight", lambda: None)
     monkeypatch.setitem(namespace, "run", failed_restart)
     with pytest.raises(RuntimeError, match="inert restart failed"):
         function(tmp_path, path, {"restart_motion": True}, record, False)
