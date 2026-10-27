@@ -272,6 +272,7 @@ class MotionExecutor(ExecutorAdmission):
             self.last_snapshot = now
 
     def _ack(self, command, status, reason, **details):
+        """Record command identity, requested maneuver and the current output without claiming physical completion."""
         self.last_ack = {
             "contract_id": "rider.motion.ack",
             "contract_version": 1,
@@ -290,7 +291,10 @@ class MotionExecutor(ExecutorAdmission):
             "command_generation": command.get("generation"),
             "observed_at": self.gate.wall_clock(),
             "physical_completion": "unverified",
-            "requested": {key: command.get(key) for key in ("direction", "vx", "yaw", "duration", "settings_revision")},
+            "requested": {
+                **{key: command.get(key) for key in ("direction", "vx", "yaw", "duration", "settings_revision")},
+                **({"turn_mode": command["turn_mode"]} if "turn_mode" in command else {}),
+            },
             "output": {"lx": self.controller.o_lx, "az": self.controller.o_az},
             "accepted": status in {"accepted", "executed"},
             "error": reason if status == "rejected" else None,

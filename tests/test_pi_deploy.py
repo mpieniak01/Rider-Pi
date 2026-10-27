@@ -346,14 +346,21 @@ def test_motion_scope_allows_only_its_adapter_and_tap():
 
 
 def test_motion_preview_stops_before_checkout_and_restarts(repos, monkeypatch):
+    """Verify motion preview stops before checkout and restarts."""
     module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
     original_run = module["preview"].__globals__["run"]
     calls = []
 
     def run(args, *a, **kwargs):
+        """Model external command responses without invoking hardware or system services."""
         if "systemctl" in args:
             calls.append((tuple(args), repos.command(repos.device, "rev-parse", "HEAD")))
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+            state = (
+                "LoadState=loaded\nActiveState=inactive\nSubState=dead\nMainPID=0\nControlPID=0\n"
+                if "show" in args
+                else ""
+            )
+            return SimpleNamespace(returncode=0, stdout=state, stderr="")
         return original_run(args, *a, **kwargs)
 
     monkeypatch.setitem(module["preview"].__globals__, "run", run)
@@ -525,3 +532,87 @@ def test_preview_rejects_added_development_dependencies_even_when_later_removed(
     error = repos.deploy("preview", target, bundle, check=False)
     assert "separate environment plan" in error
     repos.assert_base()
+
+
+@pytest.mark.parametrize("active", ["rider-venom-navigation.service", "rider-venom-perception.service"])
+def test_motion_update_preserves_active_analysis(monkeypatch, active):
+    """Verify motion update preserves active analysis."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    calls = []
+
+    def run(args, **kwargs):
+        """Model external command responses without invoking hardware or system services."""
+        calls.append(args)
+        state = "active" if args[2] == active else "inactive"
+        return SimpleNamespace(
+            returncode=0, stdout=f"LoadState=loaded\nActiveState={state}\nSubState=running\nMainPID=123\nControlPID=0"
+        )
+
+    monkeypatch.setitem(module["motion_update_preflight"].__globals__, "run", run)
+    with pytest.raises(RuntimeError, match="sharing runtime state"):
+        module["motion_update_preflight"]()
+    assert all(args[:2] == ["systemctl", "show"] for args in calls)
+
+
+def test_motion_update_allows_inactive_producers(monkeypatch):
+    """Verify motion update allows inactive producers."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    monkeypatch.setitem(
+        module["motion_update_preflight"].__globals__,
+        "run",
+        lambda args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="LoadState=loaded\nActiveState=inactive\nSubState=dead\nMainPID=0\nControlPID=0"
+        ),
+    )
+    module["motion_update_preflight"]()
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        SimpleNamespace(returncode=1, stdout=""),
+        SimpleNamespace(returncode=0, stdout=""),
+        SimpleNamespace(
+            returncode=0,
+            stdout="LoadState=loaded\nActiveState=deactivating\nSubState=stop-sigterm\nMainPID=42\nControlPID=0",
+        ),
+        SimpleNamespace(
+            returncode=0, stdout="LoadState=loaded\nActiveState=failed\nSubState=failed\nMainPID=0\nControlPID=42"
+        ),
+    ],
+)
+def test_motion_update_rejects_stopping_or_unreadable_producer(monkeypatch, response):
+    """Verify motion update rejects stopping or unreadable producer."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    monkeypatch.setitem(module["motion_update_preflight"].__globals__, "run", lambda *a, **kw: response)
+    with pytest.raises(RuntimeError, match="shared|sharing"):
+        module["motion_update_preflight"]()
+
+
+def test_release_preflight_failure_preserves_previous_release_record(repos, monkeypatch):
+    """Verify release preflight failure preserves previous release record."""
+    module = runpy.run_path(str(SCRIPT), run_name="deployment_test")
+    ns = module["release"].__globals__
+    record = repos.device / ".git/rider-preview.json"
+    release_record = record.with_name("rider-last-release.json")
+    saved = {"previous": "older", "commit": repos.base}
+    release_record.write_text(json.dumps(saved))
+    monkeypatch.setitem(ns, "_release_files", lambda *a: (repos.base, "b" * 40, []))
+
+    def refuse():
+        """Reject a simulated deployment before its release record can change."""
+        raise RuntimeError("producer still running")
+
+    monkeypatch.setitem(ns, "motion_update_preflight", refuse)
+    original_run = ns["run"]
+
+    def run(args, **kwargs):
+        """Model external command responses without invoking hardware or system services."""
+        if args[0] == "systemctl":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return original_run(args, **kwargs)
+
+    monkeypatch.setitem(ns, "run", run)
+    with pytest.raises(RuntimeError, match="producer still running"):
+        module["release"](repos.device, record, {"restart_motion": True, "restart_api": False})
+    assert json.loads(release_record.read_text()) == saved

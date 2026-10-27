@@ -29,6 +29,7 @@ def test_explicit_scopes_never_admit_private_data(deploy, path):
 
 
 def test_unchanged_preview_journals_restart_intent_before_backend_failure(deploy, monkeypatch, tmp_path):
+    """Verify unchanged preview journals restart intent before backend failure."""
     function = deploy["_unchanged_preview"]
     namespace = function.__globals__
     record = {"restart_motion": False, "restart_api": False, "commit": "a" * 40}
@@ -40,6 +41,7 @@ def test_unchanged_preview_journals_restart_intent_before_backend_failure(deploy
         assert command == ["sudo", "-n", "systemctl", "restart", "motion-executor.service"]
         raise RuntimeError("inert restart failed")
 
+    monkeypatch.setitem(namespace, "motion_update_preflight", lambda: None)
     monkeypatch.setitem(namespace, "run", failed_restart)
     with pytest.raises(RuntimeError, match="inert restart failed"):
         function(tmp_path, path, {"restart_motion": True}, record, False)

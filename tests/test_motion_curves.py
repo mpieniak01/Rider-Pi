@@ -2,7 +2,7 @@
 
 import pytest
 from motion_fakes import executor as executor
-from test_held_motion import advance, intent
+from test_held_motion import advance, intent, navigation_arm, navigation_pulse
 from test_manual_settings import operator_arm
 
 from apps.motion import manual_settings as settings
@@ -88,3 +88,29 @@ def test_migration_profiles_and_reject_unknown_mode(executor):
     assert row["values"]["ramp_mode"] == 1
     with pytest.raises(ValueError, match="ramp_mode"):
         settings.update({"ramp_mode": 3}, row["revision"])
+
+
+@pytest.mark.parametrize("mode", [0, 1, 2])
+def test_fresh_navigation_renewals_preserve_ramp_until_deadline(executor, mode):
+    """Verify fresh navigation renewals preserve ramp until deadline."""
+    instance, clock = executor
+    assert navigation_arm(instance)["status"] == "executed"
+    row = settings.read()
+    settings.update({"linear_rate": 0.5, "linear_deceleration": 1, "ramp_mode": mode}, row["revision"])
+    generation = instance.gate.generation
+    previous = 0
+    # Recorded cadence: each new 150 ms permit arrives after 120 ms.
+    for _ in range(25):
+        payload = navigation_pulse(instance, clock)
+        payload.update(vx=0.6, duration=0.15, decision_deadline_monotonic=clock.now + 0.15)
+        assert instance.apply(payload)["status"] == "accepted"
+        advance(instance, clock, 0.12)
+        assert instance.controller.o_lx >= previous - 1e-12
+        previous = instance.controller.o_lx
+    assert instance.controller.o_lx == pytest.approx(0.6)
+    assert instance.gate.generation == generation
+    # No renewal: the original decision still zeros output at its own deadline.
+    advance(instance, clock, 0.04)
+    assert instance.controller.o_lx == instance.controller.o_az == 0
+    assert instance.controller.stopped
+    assert instance.gate.state == "DISARMED"

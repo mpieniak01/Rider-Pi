@@ -128,3 +128,28 @@ rewizję raz i zachowuje pozostałe nastawy. Jeśli krótszy impuls nie osiągn�
 zapisanego minimum kierunku, minimum jest obniżane do osiągalnego szczytu;
 prędkość zadana i rampy nie są zwiększane. Niepoprawne stare dane nadal są
 odrzucane. Nowe zapisy ponad 500 ms nie korzystają z migracji i są odrzucane.
+
+### Odnawiane decyzje nawigacji a rampy
+
+Świeże decyzje nawigacji odnawiają ograniczony czasowo cel ruchu. Regulator
+zachowuje postęp rampy między decyzjami; nie rozpoczyna hamowania osobnego
+impulsu przy każdym krótkim pozwoleniu. Dotyczy to także krzywych S i logarytmicznej.
+Koniec impulsu albo ważności decyzji nadal natychmiast zeruje wyjście.
+STOP, zmiana generacji i ograniczenia przyspieszenia pozostają obowiązujące.
+Ręczne pojedyncze impulsy zachowują hamowanie w swoim czasie trwania.
+
+### Dwa ręczne manewry skrętu
+
+Dotychczasowe polecenia lewo/prawo pozostają zgodne. Dodatkowy
+turn_mode="in_place" jest dostępny wyłącznie dla ręcznego move, kierunku
+left albo right, execution_context="panel" i device_settings=true.
+Używa zapisanej prędkości i czasu odpowiedniego kierunku. Nie jest nowym
+kanałem sterowania silnikami: firmware nadal otrzymuje VX oraz VYAW.
+
+Nowy manewr najpierw wyhamowuje składową postępową; do jej wyzerowania
+regulator nie narasta zadanego obrotu. Następnie utrzymuje VX=0 i steruje yaw.
+Hamowanie zużywa oryginalny czas polecenia — nie wydłuża impulsu ani watchdogu.
+Puszczenie przycisku, STOP i zmiana generacji zachowują dotychczasowe znaczenie.
+control_modes.in_place_turn_version=1 negocjuje dostępność manewru, a ACK
+zawiera requested.turn_mode. Potwierdzenie SDK nie dowodzi fizycznego obrotu
+wokół środka; wymagana jest obserwacja kół, kąta i przesunięcia robota.

@@ -247,6 +247,7 @@ class ExecutorAdmission:
                 self._ack(previous, 'rejected', 'manual_takeover', cancelled_by=command.get('request_id'))
 
     def _execute_motion(self, command, values, mode):
+        """Submit an authorized goal with its original deadlines and optional in-place mode."""
         journey = self.gate.arming_mode == "journey"
         try:
             now = self.gate.clock()
@@ -271,6 +272,7 @@ class ExecutorAdmission:
             mode=mode,
             remote_decision_deadline=command.get("decision_deadline_monotonic"),
             remote_feedback_deadline=feedback,
+            **({"turn_in_place": True} if command.get("turn_mode") == "in_place" else {}),
         ):
             if journey:
                 self.gate.disarm("motion_submission_failed")
