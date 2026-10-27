@@ -209,7 +209,6 @@ class MotionController:
             return False
         if turn_in_place and (not manual_panel or lx != 0):
             return False
-        self.turn_in_place = turn_in_place
         self.intent_mode = mode
         duration_limit = MAX_PANEL_DURATION_S if panel_pulse else MAX_DURATION_S
         if (
@@ -227,6 +226,16 @@ class MotionController:
         )
         if max(abs(lx), abs(az)) > (MAX_SPEED if navigation else self.limits.speed_limit):
             return False
+        # End an in-place maneuver with SDK STOP, never a coasting release.
+        # Also zero the previous rotation before accepting a different maneuver.
+        ending_in_place = self.turn_in_place and (mode == "release" or not turn_in_place)
+        if ending_in_place or turn_in_place and mode == "release":
+            if self.stop() is False:
+                self.gate.disarm("actuator_failed")
+                return False
+            if mode == "release":
+                return True
+        self.turn_in_place = turn_in_place
         self._set_motion_target(lx, az)
         if self.t_lx == 0 and self.t_az == 0 and mode != "release":
             if not self._zero_goal():
@@ -398,6 +407,13 @@ class MotionController:
         self.o_lx, self.o_az = outputs
         # Every nonzero normalized output may quantize to a physical SDK step.
         self.stopped = self.o_lx == 0 and self.o_az == 0
+        # A curved pulse can reach zero before its deadline. Finish it with
+        # the same SDK STOP used by expiry, rather than leaving a live goal.
+        if self.turn_in_place and self.stopped and self.curve_braking[1]:
+            if self.stop() is False:
+                self.gate.disarm("actuator_failed")
+                return False
+            return True
         # Repeat current output while a fresh bounded goal exists. No SDK timers.
         if not self.robot.move(lx=self.o_lx, az=self.o_az):
             self.gate.disarm("actuator_failed")

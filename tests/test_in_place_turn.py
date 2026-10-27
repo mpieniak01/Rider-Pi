@@ -108,3 +108,75 @@ def test_timed_manual_pulse_turns_with_original_watchdog(executor):
     assert instance.controller.o_lx == 0 and instance.controller.o_az < 0
     advance(instance, clock, 0.52)
     assert instance.controller.stopped
+
+
+@pytest.mark.parametrize("direction", ["left", "right"])
+@pytest.mark.parametrize("metadata", [True, False])
+def test_in_place_release_stops_both_axes_immediately_and_acknowledges(executor, direction, metadata):
+    instance, clock = executor
+    operator_arm(instance)
+    instance.apply(intent(instance, "hold", direction, turn_mode="in_place"))
+    advance(instance, clock, 0.16)
+    assert instance.controller.o_az != 0
+    generation = instance.gate.generation
+    before = len(instance.adapter.calls)
+    release = intent(instance, "release", direction, **({"turn_mode": "in_place"} if metadata else {}))
+    ack = instance.apply(release)
+    assert ack["status"] == "executed"
+    assert ack["output"] == {"lx": 0.0, "az": 0.0}
+    assert instance.adapter.calls[before:] == [("stop",)]
+    assert instance.controller.deadline == 0
+    assert instance.controller.stopped
+    assert instance.pending is None
+    assert instance.gate.generation == generation
+    assert instance.gate.state == "ARMED"
+    advance(instance, clock, 0.6)
+    assert not any(c[0] == "move" and (c[1] or c[2]) for c in instance.adapter.calls[before:])
+
+
+@pytest.mark.parametrize("mode", ["pulse", "hold"])
+@pytest.mark.parametrize("ramp_mode", [0, 1, 2])
+def test_in_place_expiry_sends_sdk_stop_and_cannot_restart(executor, mode, ramp_mode):
+    instance, clock = executor
+    from apps.motion import manual_settings
+
+    row = manual_settings.read()
+    manual_settings.update({"ramp_mode": ramp_mode}, row["revision"])
+    operator_arm(instance)
+    instance.apply(intent(instance, mode, "left", turn_mode="in_place"))
+    advance(instance, clock, 0.12)
+    assert instance.controller.o_az != 0
+    before = len(instance.adapter.calls)
+    advance(instance, clock, 1.02)
+    assert ("stop",) in instance.adapter.calls[before:]
+    assert instance.controller.stopped
+    assert instance.controller.deadline == 0
+    stopped_at = max(i for i, call in enumerate(instance.adapter.calls) if call == ("stop",))
+    advance(instance, clock, 0.6)
+    assert not any(c[0] == "move" and (c[1] or c[2]) for c in instance.adapter.calls[stopped_at:])
+
+
+def test_leaving_in_place_turn_stops_rotation_before_forward_goal(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    instance.apply(intent(instance, "hold", "left", turn_mode="in_place"))
+    advance(instance, clock, 0.16)
+    before = len(instance.adapter.calls)
+    assert instance.apply(intent(instance, "hold", "forward"))["status"] == "accepted"
+    assert instance.adapter.calls[before:] == [("stop",)]
+    assert instance.controller.o_lx == instance.controller.o_az == 0
+    advance(instance, clock, 0.04)
+    assert instance.controller.o_lx > 0
+    assert instance.controller.o_az == 0
+
+
+def test_failed_in_place_release_stop_disarms_and_rejects(executor):
+    instance, clock = executor
+    operator_arm(instance)
+    instance.apply(intent(instance, "hold", "left", turn_mode="in_place"))
+    advance(instance, clock, 0.12)
+    instance.adapter.stop = lambda: False
+    ack = instance.apply(intent(instance, "release", "left", turn_mode="in_place"))
+    assert ack["status"] == "rejected"
+    assert instance.gate.state == "DISARMED"
+    assert instance.controller.stopped

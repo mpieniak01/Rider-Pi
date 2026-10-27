@@ -167,3 +167,17 @@ wymaga odnawiania z limitem 500 ms, a żądania mają oddzielną ważność do 5
 STOP i rozbrojenie przerywają impuls natychmiast. Decyzje autonomiczne nadal
 wygasają zgodnie z własnym terminem i świeżością obrazu, również gdy ustawione
 maksimum impulsu jest wyższe.
+
+
+### Zakończenie obrotu w miejscu
+
+Zwolnienie przycisku obrotu w miejscu wysyła natychmiastowy SDK STOP obu osi,
+czyści cele, rampy i termin poprzedniego manewru. Nie korzysta z rampy
+zwalniania zwykłego skrętu. Potwierdzenie zwolnienia wraca dopiero po przyjęciu
+STOP przez adapter; błąd STOP rozbraja wykonawcę. Koniec impulsu i utrata
+odnowień także kończą się STOP. Przy zmianie manewru z obrotu w miejscu na
+jazdę poprzedni obrót jest zerowany przed przyjęciem nowego celu.
+
+SDK STOP jest poleceniem zerowej prędkości kontrolera, a nie udokumentowanym
+niezależnym hamulcem kół. Kod nie stosuje przeciwimpulsu i nie dowodzi braku
+poślizgu ani zatrzymania fizycznego; to wymaga osobnego odbioru na podłożu.
