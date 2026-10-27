@@ -113,3 +113,33 @@ def test_failed_height_does_not_leave_motion_armed(executor):
     assert result["status"] == "rejected"
     assert instance.gate.state == "DISARMED"
     assert instance.controller.stopped
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_explicit_balance_apply_stops_drive_and_transfers_authority(executor, enabled):
+    instance, _ = executor
+    instance.apply(gesture(instance))
+    instance.tick(0.01)
+    row = height_intent(instance)
+    row.pop("height")
+    row.update(action="balance", enabled=enabled)
+    start = len(instance.adapter.calls)
+    result = instance.apply(row)
+    assert result["status"] == "executed"
+    assert instance.gate.owner == "manual"
+    assert instance.gate.panel_id == "height-panel"
+    assert instance.controller.stopped
+    assert instance.adapter.calls[start:][-1] == ("balance", enabled)
+    assert ("stop",) in instance.adapter.calls[start:-1]
+    assert instance.snapshot()["operator_posture_intervention_version"] == 1
+
+
+@pytest.mark.parametrize("enabled", [0, 1, None, "true"])
+def test_balance_gesture_requires_strict_boolean(executor, enabled):
+    instance, _ = executor
+    row = height_intent(instance)
+    row.pop("height")
+    row.update(action="balance", enabled=enabled)
+    assert instance.apply(row)["status"] == "rejected"
+    assert instance.gate.state == "DISARMED"
+    assert not any(event[0] == "balance" for event in instance.adapter.calls)

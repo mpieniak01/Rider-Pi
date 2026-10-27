@@ -457,7 +457,7 @@ test('passive pages never bind or dispatch motion shortcuts or a blur STOP', asy
 test('opening a panel with ESTOP never clears or arms automatically', async () => {
   const f = await fixture({ ...disarmed(), state: 'ESTOP' });
   f.panel.render();
-  assert.equal(f.elements.get('global-motion-toggle').textContent, 'Robot rozbrojony');
+  assert.equal(f.elements.get('global-motion-toggle').textContent, 'Odblokuj STOP');
   assert.ok(f.calls.every(call => call.method === 'GET'));
 });
 

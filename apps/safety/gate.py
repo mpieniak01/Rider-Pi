@@ -381,6 +381,7 @@ class MotionGate:
             "navigation_journey_version": 1,
             "operator_intervention_version": 1,
             "operator_height_intervention_version": 1,
+            "operator_posture_intervention_version": 1,
             "journey": self.journey.snapshot(),
             "execution_context": self.execution_context,
             "panel_motion_enabled": self.state == "ARMED" and self.execution_context == "panel",

@@ -99,3 +99,5 @@ authorization and STOP/goal handling. They run synchronously under the same
 executor lock and do not create another UART owner. `calibration_schema`
 contains pure profile validation; `calibration_profiles` retains its public
 imports and persistence/activation operations.
+
+Native Control and Calibration send explicit motion/posture gestures with their own panel_id. Height edits remain local until Apply. Roll compensation uses operator_posture_intervention_version=1 with a strict boolean. Reads and page startup never grant authority. STOP invalidates older intents; E-Stop remains latched.

@@ -192,3 +192,5 @@ wysłaniem wysokości 75–115 SDK. Zwykłe polecenie wysokości bez tego kontra
 nadal wymaga wcześniejszego ARM. STOP, E-Stop, rewizja ustawień i świeżość
 koperty obowiązują bez zmian. Odpowiedź opisuje przyjęte polecenie, nie pomiar
 ani potwierdzone fizyczne osiągnięcie wysokości.
+
+Natywne panele Sterowanie i Kalibracja wysyłają jawne gesty jazdy i postawy z własnym panel_id. Edycja wysokości pozostaje lokalna do kliknięcia Ustaw. Kompensacja przechyłu używa operator_posture_intervention_version=1 i ścisłej wartości boolean. Odczyt lub wejście na stronę nie przyznaje uprawnień. STOP unieważnia stare polecenia; E-Stop pozostaje zatrzaśnięty.
