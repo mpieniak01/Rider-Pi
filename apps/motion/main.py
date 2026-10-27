@@ -342,7 +342,10 @@ class MotionController:
 
     def _axis_output(self, axis, current, target, acceleration, deceleration, dt, remaining):
         # Reserve deceleration inside the original deadline, never extend TTL.
-        if getattr(self, "intent_mode", "pulse") == "pulse":
+        # Remote navigation renews a continuous target with fresh bounded permits.
+        # Pre-braking every short permit repeatedly restarts S curves near zero.
+        # Expiry still bypasses ramps in expire_remote_decision/expire_goal.
+        if getattr(self, "intent_mode", "pulse") == "pulse" and self.remote_decision_deadline is None:
             if self.limits.ramp_mode:
                 if remaining <= abs(current) * curve_factor(self.limits.ramp_mode) / deceleration + dt:
                     self.curve_braking[axis] = True

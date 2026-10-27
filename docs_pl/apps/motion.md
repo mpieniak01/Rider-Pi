@@ -128,3 +128,12 @@ rewizję raz i zachowuje pozostałe nastawy. Jeśli krótszy impuls nie osiągn�
 zapisanego minimum kierunku, minimum jest obniżane do osiągalnego szczytu;
 prędkość zadana i rampy nie są zwiększane. Niepoprawne stare dane nadal są
 odrzucane. Nowe zapisy ponad 500 ms nie korzystają z migracji i są odrzucane.
+
+### Odnawiane decyzje nawigacji a rampy
+
+Świeże decyzje nawigacji odnawiają ograniczony czasowo cel ruchu. Regulator
+zachowuje postęp rampy między decyzjami; nie rozpoczyna hamowania osobnego
+impulsu przy każdym krótkim pozwoleniu. Dotyczy to także krzywych S i logarytmicznej.
+Koniec impulsu albo ważności decyzji nadal natychmiast zeruje wyjście.
+STOP, zmiana generacji i ograniczenia przyspieszenia pozostają obowiązujące.
+Ręczne pojedyncze impulsy zachowują hamowanie w swoim czasie trwania.
