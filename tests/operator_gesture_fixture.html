@@ -1,0 +1,34 @@
+<!doctype html><html lang="pl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Native operator inert fixture</title>
+<style>body{font-family:Arial;max-width:700px;margin:auto;background:#06131f;color:white}button,input,select{min-height:38px}.posture-row{display:flex;gap:8px;flex-wrap:wrap}input{max-width:100%}</style>
+<div id="operator-message"></div><button id="global-motion-toggle"></button><div id="posture-controls"></div><ol id="request-history"></ol>
+<script>
+window.nativeFixture={calls:[],height:null,balance:null,generation:"g0",owner:null,holder:null,phase:"DISARMED"};
+window.fetch=async(url,options={})=>{
+ const f=window.nativeFixture,now=Date.now()/1000;
+ const safety=()=>({contract_version:1,state:f.phase,owner:f.owner,generation:f.generation,last_seq:0,ready:true,hardware_ready:true,stale:false,observed_at:Date.now()/1000,panel_control:{version:1,holder:f.holder},
+ operator_intervention_version:1,operator_height_intervention_version:1,operator_posture_intervention_version:1,actuators:{height:{value:f.height},balance:{enabled:f.balance}},
+ capabilities:Object.fromEntries(["move","turn","height","balance"].map(k=>[k,{available:true,stop_verified:true}]))});
+ let body,status=200,operation=null;
+ if(options.method==="POST"){
+  const command=JSON.parse(options.body);f.calls.push(command);
+  if(command.operator_consent!==true||command.operator_intervention_version!==1||!command.panel_id)throw new Error("Missing explicit native gesture");
+  const previous=f.generation;f.generation="g"+f.calls.length;f.phase="ARMED";f.owner="manual";f.holder=command.panel_id;
+  if(command.action==="height")f.height=command.height;else if(command.action==="balance")f.balance=command.enabled;else throw new Error("Unexpected fixture actuator");
+  body={safety:safety(),server_time:now,confirmed:true,pending:false,ack:{...command,status:"executed",accepted:true,command_generation:previous,generation:f.generation,observed_at:now}};
+  operation={status:"executed",confirmed:true,actuation:false,physical_completion:"not_applicable"};
+ }else if(url==="/api/logic/catalog")body={ok:true,contract_version:2,catalog_version:2,api_envelope_versions:[1],observed_at:now,features:[],units:[]};
+ else if(url==="/api/control/state")body={safety:safety(),server_time:now};
+ else throw new Error("Unexpected fixture read "+url);
+ const family=url==="/api/logic/catalog"?"rider.catalog":"rider.safety",version=family==="rider.catalog"?2:1;
+ return new Response(JSON.stringify({meta:{envelope_version:1,contract_id:family,contract_version:version,host:"pi",source:"fixture",observed_at:now,generated_at:now,server_time:now,stale:false,offline:false,partial:false},ok:true,data:body,error:null,operation}),{status,headers:{"Content-Type":"application/vnd.rider.api+json;version=1"}});
+};
+</script>
+<script type="module">
+import {SafetyPanel} from "/web/assets/operator/safety.js";
+import {Posture} from "/web/assets/operator/posture.js";
+let posture;
+const safety=new SafetyPanel(()=>posture?.render());
+safety.controls={state:{revision:45},commandReady:()=>true};
+posture=new Posture(safety);
+window.nativeFixture.estop=()=>{safety.update({...safety.state,state:"ESTOP"});};
+</script></html>

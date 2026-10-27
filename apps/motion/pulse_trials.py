@@ -58,7 +58,7 @@ class PulseTrials:
             )
         try:
             plan = recipe(command)
-            if self.active:
+            if self.active or executor.figures.active:
                 raise ValueError("pulse_trial_active")
             executor.gate.poll()
             if executor.gate.state != "DISARMED" or not executor.controller.stopped or executor.controller.deadline:

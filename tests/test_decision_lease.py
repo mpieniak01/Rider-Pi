@@ -409,7 +409,7 @@ def test_zero_submission_failure_remains_terminal():
     assert lease.reason == "motion_submission_failed"
 
 
-@pytest.mark.parametrize("duration", [190, 250, 500])
+@pytest.mark.parametrize("duration", [190, 250, 500, 1000])
 def test_extended_navigation_pulse_policy_accepts_without_changing_defaults(duration):
     from copy import deepcopy
 
@@ -420,7 +420,7 @@ def test_extended_navigation_pulse_policy_accepts_without_changing_defaults(dura
     assert validate(policy)["max_motion_ms"] == duration
     assert DEFAULT["max_motion_ms"] == 150
     with pytest.raises(ValueError, match="navigation_duration_invalid"):
-        validate({**policy, "max_motion_ms": 501})
+        validate({**policy, "max_motion_ms": 1001})
 
 
 @pytest.mark.parametrize(

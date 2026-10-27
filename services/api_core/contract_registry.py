@@ -39,6 +39,15 @@ _GROUPS = {
         ),
     ),
     "rider.pulse_trials": (1, ("/api/motion/trials/profiles", "/api/motion/trials", "/api/motion/trials/<request_id>")),
+    "rider.figures": (
+        1,
+        (
+            "/api/motion/figures",
+            "/api/motion/figures/runs",
+            "/api/motion/figures/runs/<request_id>",
+            "/api/motion/figures/runs/<request_id>/cancel",
+        ),
+    ),
     "rider.transport": (1, ("/api/v1/transport/identity",)),
     "rider.compute": (1, ("/api/compute/config", "/api/compute/status", "/api/compute/tasks/<task>")),
     "rider.catalog": (2, ("/api/logic/catalog",)),

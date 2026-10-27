@@ -24,6 +24,7 @@ export class SafetyPanel {
     this.interactive = interactive; this.upperOffset = 0; this.lowerOffset = 0;
     this.lastArmed = false; this.lastConfirmed = null; this.observationFailed = false; this.state = null; this.onChange = onChange; this.seq = -1; this.generation = null;
     this.history = []; this.pending = new Map(); this.mutating = false;
+    this.pendingGesture = null;
     this.revokedGenerations = new Set();
     this.clockReady = false; this.clockObserved = 0;
     this.held = new HeldMotion({
@@ -38,6 +39,7 @@ export class SafetyPanel {
         node.classList.toggle('is-held',pressed);
       })
     });
+    this.panelId = requestId('panel');
     this.toggling = false; this.toggleEpoch = 0;
     document.getElementById('global-motion-toggle')?.addEventListener('click', () => this.toggleMotion().catch(showError));
     this.poller = poll(async () => {
@@ -100,21 +102,46 @@ export class SafetyPanel {
     if (!operator) await this.poller.refresh();
   }
   clockFresh() { const age = Date.now() / 1000 - this.clockObserved; return this.clockReady && age >= 0 && age <= 3; }
+  supportsGesture(action) {
+    if (action === 'height') return this.state?.operator_height_intervention_version === 1;
+    if (action === 'balance') return this.state?.operator_posture_intervention_version === 1;
+    return ['move','turn'].includes(action) && this.state?.operator_intervention_version === 1;
+  }
+  gestureReady(action) {
+    return this.supportsGesture(action) && ['DISARMED','ARMED'].includes(this.state?.state)
+      && this.state?.ready === true && this.state?.stale !== true
+      && this.state?.capabilities?.[action]?.available === true
+      && this.state?.panel_control?.version === 1 && Number.isInteger(this.controls?.state?.revision)
+      && this.clockFresh() && safetyKnown(this.state,this.commandTime());
+  }
+  gestureParams(action,params) {
+    const owns = this.state?.state === 'ARMED' && this.state.owner === 'manual'
+      && this.state.panel_control?.holder === this.panelId;
+    const replacing = ['height','balance'].includes(action) || !owns;
+    if (!this.supportsGesture(action) || !replacing || params.mode === 'release') return params;
+    return {...params,device_settings:true,operator_intervention_version:1,intervene:true,
+      operator_consent:true,operator_plan:'manual '+action+' '+(params.direction??params.height??params.enabled),
+      owner:'manual',arming_mode:'operator'};
+  }
   can(owner = 'manual', action = 'move') {
-    const settingsReady = !this.controls || (this.controls.commandReady?.() ?? this.controls.ready());
-    return settingsReady && this.state?.execution_context !== 'test' && this.controlsActive()
-      && !this.revokedGenerations.has(this.state?.generation)
-      && (this.clockReady && operatorAuthorized(this.state, owner, action) || this.clockFresh() && authorized(this.state, owner, action, this.now()));
+    const posture = ['height','balance'].includes(action) && this.supportsGesture(action);
+    const settingsReady = posture ? Number.isInteger(this.controls?.state?.revision)
+      : !this.controls || (this.controls.commandReady?.() ?? this.controls.ready());
+    const allowed = settingsReady && this.state?.execution_context !== 'test' && this.controlsActive()
+      && !this.revokedGenerations.has(this.state?.generation);
+    if(owner==='manual' && this.supportsGesture(action))return allowed && this.gestureReady(action);
+    return allowed && (this.clockReady && operatorAuthorized(this.state, owner, action)
+      || this.clockFresh() && authorized(this.state, owner, action, this.now()));
   }
   envelope(action, params = {}, owner = 'manual') {
     const permissionAction = ['arm','clear_estop'].includes(action);
     if (!this.clockReady || (!permissionAction && !operatorAuthorized(this.state, owner, action) && (!safetyKnown(this.state, this.now()) || !this.clockFresh()))) throw new Error(tr('Brak świeżego kontraktu bezpieczeństwa v1 i potwierdzonego zegara', 'No fresh safety contract v1 and confirmed clock'));
     if (!['arm', 'clear_estop'].includes(action) && (!this.can(owner, action) || (action === 'move' && params.yaw && !this.can(owner, 'turn')))) throw new Error(tr('Napęd zablokowany: stan, właściciel lub możliwości', 'Actuator blocked: state, owner or capability'));
     if (action === 'arm' && this.state.state !== 'DISARMED' || action === 'clear_estop' && this.state.state !== 'ESTOP') throw new Error(tr('Stan zmienił się — sprawdź ponownie zgodę', 'State changed — review permission again'));
-    return this.buildEnvelope(action, params, this.state.generation);
+    return this.buildEnvelope(action, this.gestureParams(action,params), this.state.generation);
   }
   buildEnvelope(action, params, generation) {
-    return { ...params, action, source: 'manual', execution_context: 'panel', generation, seq: ++this.seq,
+    return { ...params, action, source: 'manual', execution_context: 'panel', panel_id:this.panelId, generation, seq: ++this.seq,
       request_id: requestId('web'),
       ts: this.commandTime(), ttl_ms: 500 };
   }
@@ -157,7 +184,7 @@ export class SafetyPanel {
     return command;
   }
   recordCommand(command,exempt) {
-    if (exempt) { this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
+    if (exempt) { this.pendingGesture = null; this.held.stop(); this.toggleEpoch++; this.revoke(); this.render(); }
     const submittedAt = this.commandTime();
     const entry = { command, submittedAt, status: 'sending' };
     this.history.unshift(entry); this.history = this.history.slice(0, 20); this.pending.set(command.request_id, entry);
@@ -200,23 +227,35 @@ export class SafetyPanel {
     } finally { if (!exempt) { this.mutating = false; } this.renderHistory(); void this.poller.refresh(); }
   }
   async sendIntent(intent, valid) {
+    const pending=intent.mode==='release' ? this.pendingGesture : null;
+    if (intent.mode==='release' && this.supportsGesture('move') && !pending
+      && !(this.state?.state==='ARMED' && this.state.owner==='manual' && this.state.panel_control?.holder===this.panelId)) return;
     const revision=this.controls?.state?.revision;
-    const generation=this.state?.generation, initialSeq=this.seq;
+    const generation=pending?.generation??this.state?.generation, initialSeq=this.seq;
     const permittedAtStart=this.can('manual',['left','right'].includes(intent.direction)?'turn':'move');
     const neutralAllowed=intent.mode==='release' && permittedAtStart;
     await prepareMutation({ control: true });
     const check=()=>{
+      if(pending){
+        if(!valid() || this.pendingGesture!==pending || !this.clockFresh())throw new Error('manual_intent_cancelled_or_stale');
+        return;
+      }
       if(!valid() || (this.state && generation!==this.state.generation) || revision!==this.controls?.state?.revision
         || (!(neutralAllowed && !this.state && Date.now()/1000-this.clockObserved<=3) && !this.can('manual',['left','right'].includes(intent.direction)?'turn':'move')))
         throw new Error('manual_intent_cancelled_or_stale');
     };
     check();
-    const params={...this.controls.pulse(intent.direction),mode:intent.mode};
+    const params=pending
+      ?{device_settings:true,direction:pending.direction,settings_revision:pending.settings_revision,mode:'release',
+        operator_intervention_version:1,intervene:true,supersedes_operation_id:pending.request_id}
+      :{...this.controls.pulse(intent.direction),mode:intent.mode};
     if(neutralAllowed && !this.state)this.seq=Math.max(this.seq,initialSeq);
     // New release intent: create its envelope only after negotiation and validation.
-    const command=neutralAllowed && !this.state
+    const command=pending || neutralAllowed && !this.state
       ?this.buildEnvelope('move',params,generation):this.envelope('move',params);
+    if(intent.mode!=='release')this.pendingGesture=command.operator_intervention_version===1 && intent.mode==='hold'?command:null;
     const result=await request('/api/control',{method:'POST',body:command,timeout:500,beforeSend:check});
+    if(pending && this.pendingGesture===pending)this.pendingGesture=null;
     if(result.data.safety)this.update(result.data.safety);
     if(result.data.ack?.status==='rejected')throw new Error(result.data.ack.reason||'motion_rejected');
     text('operator-message',intentLabel(intent.mode));
@@ -242,6 +281,7 @@ export class SafetyPanel {
     try {
       if (this.state.state === 'ESTOP') {
         await this.send('clear_estop', consent, '/api/safety');
+        if(this.state?.operator_intervention_version===1)return;
         await this.poller.refresh();
       }
       // A fresh executor state must confirm clearing; never guess from HTTP acceptance.
@@ -254,9 +294,10 @@ export class SafetyPanel {
     const node = document.getElementById('global-motion-toggle'); if (!node) return;
     const known = this.state?.contract_version === 1 && ['ARMED','DISARMED','ESTOP'].includes(this.state.state);
     const armed = known && this.state.state === 'ARMED';
+    node.hidden = this.state?.operator_intervention_version===1 && this.state.state!=='ESTOP';
     const unknownArmed = !known && this.lastArmed;
     const unconfirmed = this.observationFailed || !safetyKnown(this.state, this.now());
-    node.textContent = armingLabel(known,armed,unconfirmed);
+    node.textContent = this.state?.state==='ESTOP'?tr('Odblokuj STOP','Clear STOP'):armingLabel(known,armed,unconfirmed);
     node.classList.toggle('is-armed', armed); node.classList.toggle('is-disarmed', known && !armed);
     node.setAttribute('aria-pressed', String(armed));
     node.disabled = !armed && (this.toggling || this.mutating || !known || !this.clockReady);

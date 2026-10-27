@@ -178,6 +178,7 @@ class ExecutorAdmission:
 
     def _execute_authorized(self, command, action, values, mode, reason):
         self.trials.override()
+        self.figures.override()
         if action in OPERATOR_ACTIONS:
             return self._ack(command, "executed", reason, hardware_stop_sent=True)
         if action in {"stop", "disarm", "estop", "clear_estop"}:
@@ -290,7 +291,11 @@ class ExecutorAdmission:
         self.intent_source = command.get('source')
         if previous is not None:
             self._ack(previous, "rejected", "goal_superseded", superseded_by=command.get("request_id"))
-        if values["vx"] == 0 and values["yaw"] == 0 and mode != "release":
+        if (
+            values["vx"] == 0
+            and values["yaw"] == 0
+            and (mode != "release" or self.controller.stopped and not self.controller.deadline)
+        ):
             self.output_observed_at = self.gate.wall_clock()
             self.publish_output(force=True)
             return self._ack(command, "executed", "sdk_zero_accepted")

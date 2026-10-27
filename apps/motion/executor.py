@@ -20,6 +20,7 @@ from apps.motion.actuator_contract import (
 from apps.motion.calibration_runtime import CalibrationRuntime
 from apps.motion.dynamics import RampLimits
 from apps.motion.executor_admission import ExecutorAdmission
+from apps.motion.figure_sequences import FigureSequences
 from apps.motion.main import MotionController, _make_adapter
 from apps.motion.operator_requests import OperatorRequests
 from apps.motion.pulse_trials import PulseTrials
@@ -61,6 +62,7 @@ class MotionExecutor(ExecutorAdmission):
             simulated=getattr(self.adapter, "simulated", False),
         )
         self.trials = PulseTrials(self)
+        self.figures = FigureSequences(self)
         self.last_output = 0.0
         self.output_generation = None
         self.output_command_generation = None
@@ -134,7 +136,11 @@ class MotionExecutor(ExecutorAdmission):
             return
         try:
             row = manual_settings.read(blocking=False)
-            if self.controls is not None and row["revision"] != self.controls["revision"] and self.controller.deadline:
+            if (
+                self.controls is not None
+                and row["revision"] != self.controls["revision"]
+                and (self.controller.deadline or self.figures.active)
+            ):
                 # Published idle status can race an admitted goal. Keep that goal's
                 # configuration until it ends, and admit no replacement on mixed revisions.
                 self.controls_pending_revision = row["revision"]
@@ -200,8 +206,9 @@ class MotionExecutor(ExecutorAdmission):
             last_ack=self.last_ack,
             recent_acks=list(self.recent_acks),
             simulated=bool(getattr(self.adapter, "simulated", False)),
-            moving=not self.controller.stopped,
+            moving=not self.controller.stopped or self.figures.active,
             pulse_trials=self.trials.snapshot(),
+            figures=self.figures.snapshot(),
             intent_mode=getattr(self.controller, "intent_mode", "pulse"),
             active_source=self.intent_source if self.controller.deadline > self.gate.clock() else None,
             agent_manual_active=bool(self.intent_source == 'manual' and self.controller.deadline > self.gate.clock()),
@@ -347,6 +354,10 @@ class MotionExecutor(ExecutorAdmission):
             return self._apply(payload, topic=topic)
         try:
             with manual_settings.locked(blocking=False):
+                if isinstance(payload, dict) and any(key.startswith("figure_") for key in payload):
+                    if topic not in COMMAND_TOPICS:
+                        return self._ack(payload, "rejected", "figure_command_topic_invalid")
+                    return self.figures.admit(canonical_command(topic, payload))
                 if isinstance(payload, dict) and ("trial_profile_id" in payload or "trial_version" in payload):
                     return self.trials.admit(canonical_command(topic, payload))
                 return self._apply(payload, topic=topic)
@@ -432,6 +443,11 @@ class MotionExecutor(ExecutorAdmission):
                 self._ack(pending, "rejected", self.gate.reason)
             self.publish_status(force=True)
         self.trials.guard()
+        try:
+            self.figures.tick(dt)
+        except Exception as exc:
+            self.figures.finish("failed", "figure_execution_failed")
+            self._hardware_fault(f"figure_execution_failed:{type(exc).__name__}")
         executed = self._tick_controller(dt)
         if self.gate.reason == "actuator_failed":
             self._hardware_fault(getattr(self.adapter, "error", None) or "actuator_failed")
@@ -469,6 +485,7 @@ class MotionExecutor(ExecutorAdmission):
 
     def close(self, reason="executor_shutdown"):
         self.trials.finish("cancelled", reason)
+        self.figures.finish("cancelled", reason)
         self.shutdown = True
         self.pending = None
         self.gate.disarm(reason)

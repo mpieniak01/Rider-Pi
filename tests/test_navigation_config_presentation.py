@@ -34,10 +34,10 @@ def test_camera_failure_degrades_catalog_without_claiming_navigation_save_failed
     assert config["model_tuning_supported"] is True
     assert config["motion_limits"] == {
         "version": 1,
-        "max_motion_ms": 500,
+        "max_motion_ms": 1000,
         "max_speed": 1.0,
         "max_turn_speed": 1.0,
-        "max_turn_ms": 500,
+        "max_turn_ms": 1000,
         "max_decision_ms": 500,
     }
     assert config["perception_tuning"]["version"] == 1

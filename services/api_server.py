@@ -42,6 +42,7 @@ import services.api_core.face_anim as face_anim
 import services.api_core.face_runtime_api as face_runtime_api
 import services.api_core.face_studio as face_studio
 import services.api_core.features_api as features_api
+import services.api_core.figures_api as figures_api
 import services.api_core.google_home_api as google_home_api
 import services.api_core.google_proxy as google_proxy
 import services.api_core.http_contract as http_contract
@@ -298,6 +299,19 @@ _add_rule(
     endpoint="pulse_trials_status",
     view_func=pulse_trials_api.status,
     methods=["GET"],
+)
+
+# Own figure sequences are executed only by the current motion owner.
+_add_rule("/api/motion/figures", endpoint="figures_catalog", view_func=figures_api.catalog, methods=["GET"])
+_add_rule("/api/motion/figures/runs", endpoint="figures_start", view_func=figures_api.start, methods=["POST"])
+_add_rule(
+    "/api/motion/figures/runs/<request_id>", endpoint="figures_status", view_func=figures_api.status, methods=["GET"]
+)
+_add_rule(
+    "/api/motion/figures/runs/<request_id>/cancel",
+    endpoint="figures_cancel",
+    view_func=figures_api.cancel,
+    methods=["POST"],
 )
 
 # navigator API (Rekonesans mode)

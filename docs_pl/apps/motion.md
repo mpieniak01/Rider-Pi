@@ -32,8 +32,8 @@ koperty. Owner: manual/follow_me/navigation. Aktuatory wymagają request_id,
 source, generation, rosnącego seq, ts oraz ttl_ms 1–500. API i wykonawca
 walidują niezależnie. Klient korzysta z server_time API; nie odświeża starego
 żądania. Jazda/obrót: [-1,1]. Impuls panelu z device_settings korzysta z
-deskryptora (0.01–0.5 s). Maksimum pojedynczego impulsu wynosi 500 ms również
-dla poleceń ogólnych i nawigacji; zakres konfiguracji nawigacji to 50–500 ms.
+deskryptora (0.01–1.0 s). Maksimum pojedynczego impulsu wynosi 1000 ms również
+dla poleceń ogólnych i nawigacji; zakres konfiguracji nawigacji to 50–1000 ms.
 Maksymalna wartość prędkości to 1.0. Prędkość/impuls manuala ogranicza dodatkowo
 zapisany profil kierunku; ograniczona świeżą decyzją nawigacja korzysta z własnej
 polityki, bez dziedziczenia wartości impulsu i maksimum kierunku manualnego.
@@ -122,12 +122,10 @@ GET /api/motion/trials/profiles i GET /api/motion/trials/<request_id> zwracają 
 Testy automatyczne korzystają wyłącznie z atrap czasu, adaptera i BUS. Wdrożenie oraz odczyty GET nie są zgodą na fizyczną próbę. Optymalizacja pętli i odczytów usług pozostaje odrębnym zakresem.
 
 
-Przy odczycie starszych ustawień i nazwanych profili poprawne wcześniej impulsy
-powyżej 500 ms, do dawnego maksimum 1 s, są skracane do 500 ms. Migracja zwiększa
-rewizję raz i zachowuje pozostałe nastawy. Jeśli krótszy impuls nie osiągnąłby
-zapisanego minimum kierunku, minimum jest obniżane do osiągalnego szczytu;
-prędkość zadana i rampy nie są zwiększane. Niepoprawne stare dane nadal są
-odrzucane. Nowe zapisy ponad 500 ms nie korzystają z migracji i są odrzucane.
+Odczyt starszych ustawień i nazwanych profili zachowuje poprawne impulsy do
+1000 ms bez skracania, zmiany rewizji ani pozostałych nastaw. Nowe zapisy
+korzystają z tego samego zakresu do 1 s. Niepoprawne dane oraz impulsy ponad
+1000 ms nadal są odrzucane.
 
 ### Odnawiane decyzje nawigacji a rampy
 
@@ -153,3 +151,44 @@ Puszczenie przycisku, STOP i zmiana generacji zachowują dotychczasowe znaczenie
 control_modes.in_place_turn_version=1 negocjuje dostępność manewru, a ACK
 zawiera requested.turn_mode. Potwierdzenie SDK nie dowodzi fizycznego obrotu
 wokół środka; wymagana jest obserwacja kół, kąta i przesunięcia robota.
+
+
+### Impuls do jednej sekundy
+
+Wspólny maksymalny czas pojedynczego impulsu wynosi 1000 ms (1 s).
+Pi publikuje ten zakres w deskryptorach ustawień manualnych oraz limitach
+polityki automatu; panel zachowuje bieżące zapisane wartości i pokazuje zakres
+z urządzenia. Zwiększenie maksimum nie wydłuża samoczynnie zapisanych impulsów.
+
+Jednorazowy ręczny impuls zachowuje swój zadany czas do 1 s. Przytrzymanie nadal
+wymaga odnawiania z limitem 500 ms, a żądania mają oddzielną ważność do 500 ms.
+STOP i rozbrojenie przerywają impuls natychmiast. Decyzje autonomiczne nadal
+wygasają zgodnie z własnym terminem i świeżością obrazu, również gdy ustawione
+maksimum impulsu jest wyższe.
+
+
+### Zakończenie obrotu w miejscu
+
+Zwolnienie przycisku obrotu w miejscu wysyła natychmiastowy SDK STOP obu osi,
+czyści cele, rampy i termin poprzedniego manewru. Nie korzysta z rampy
+zwalniania zwykłego skrętu. Potwierdzenie zwolnienia wraca dopiero po przyjęciu
+STOP przez adapter; błąd STOP rozbraja wykonawcę. Koniec impulsu i utrata
+odnowień także kończą się STOP. Przy zmianie manewru z obrotu w miejscu na
+jazdę poprzedni obrót jest zerowany przed przyjęciem nowego celu.
+
+SDK STOP jest poleceniem zerowej prędkości kontrolera, a nie udokumentowanym
+niezależnym hamulcem kół. Kod nie stosuje przeciwimpulsu i nie dowodzi braku
+poślizgu ani zatrzymania fizycznego; to wymaga osobnego odbioru na podłożu.
+
+### Ręczna zmiana wysokości jednym poleceniem
+
+Wykonawca ogłasza `operator_height_intervention_version: 1`. Jawne
+`height` z `operator_intervention_version: 1`, zgodą operatora, planem,
+`intervene: true`, `device_settings: true` i właścicielem manual/operator/panel
+przejmuje sterowanie w jednej transakcji. Zatrzymuje wcześniejszą jazdę przed
+wysłaniem wysokości 75–115 SDK. Zwykłe polecenie wysokości bez tego kontraktu
+nadal wymaga wcześniejszego ARM. STOP, E-Stop, rewizja ustawień i świeżość
+koperty obowiązują bez zmian. Odpowiedź opisuje przyjęte polecenie, nie pomiar
+ani potwierdzone fizyczne osiągnięcie wysokości.
+
+Natywne panele Sterowanie i Kalibracja wysyłają jawne gesty jazdy i postawy z własnym panel_id. Edycja wysokości pozostaje lokalna do kliknięcia Ustaw. Stan ogłasza operator_posture_intervention_version=1 dla kompensacji przechyłu; jej polecenie używa operator_intervention_version=1 i ścisłej wartości boolean. Odczyt lub wejście na stronę nie przyznaje uprawnień. STOP unieważnia stare polecenia; E-Stop pozostaje zatrzaśnięty.

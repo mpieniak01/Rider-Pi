@@ -144,15 +144,12 @@ def test_actuator_validation_error_order(payload, reason):
 
 
 def test_actuator_duration_bound_is_uniform_across_device_contexts():
-    payload = {"action": "move", "vx": 0.1, "duration": 0.75, "device_settings": True, "direction": "forward"}
-    with pytest.raises(ValueError, match="motion_limits_exceeded"):
-        validate_actuator(payload)
-    with pytest.raises(ValueError, match="motion_limits_exceeded"):
-        validate_actuator({**payload, "source": "manual", "execution_context": "panel"})
+    payload = {"action": "move", "vx": 0.1, "device_settings": True, "direction": "forward"}
     for context in [{}, {"source": "manual", "execution_context": "panel"}]:
-        assert validate_actuator({**payload, **context, "duration": 0.5})["duration"] == 0.5
+        for duration in (0.5, 0.75, 1.0):
+            assert validate_actuator({**payload, **context, "duration": duration})["duration"] == duration
         with pytest.raises(ValueError, match="motion_limits_exceeded"):
-            validate_actuator({**payload, **context, "duration": 0.501})
+            validate_actuator({**payload, **context, "duration": 1.001})
     assert validate_actuator({"action": "action", "action_id": 255}) == {"name": "default"}
     assert validate_actuator({"action": "stop"}) == {}
 

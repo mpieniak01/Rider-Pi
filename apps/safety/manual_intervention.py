@@ -1,8 +1,10 @@
-"""A fresh direction gesture grants manual authority; scoped releases grant none."""
+"""Explicit direction or height gestures grant manual authority; releases grant none."""
 
 from __future__ import annotations
 
 from collections import deque
+
+from common.actuator_parameters import valid_height
 
 
 def validate(command):
@@ -11,7 +13,7 @@ def validate(command):
     if (
         type(command["operator_intervention_version"]) is not int
         or command["operator_intervention_version"] != 1
-        or command.get("action") not in {"move", "turn"}
+        or command.get("action") not in {"move", "turn", "height", "balance"}
         or command.get("intervene") is not True
         or command.get("source") != "manual"
         or command.get("execution_context") != "panel"
@@ -20,6 +22,16 @@ def validate(command):
         or command.get("device_settings") is not True
     ):
         raise ValueError("operator_intervention_invalid")
+    if command.get("action") == "height" and (
+        not valid_height(command.get("height"))
+        or any(key in command for key in ("mode", "direction", "turn_mode", "vx", "yaw", "duration", "enabled"))
+    ):
+        raise ValueError("operator_height_intervention_invalid")
+    if command.get("action") == "balance" and (
+        type(command.get("enabled")) is not bool
+        or any(key in command for key in ("mode", "direction", "turn_mode", "vx", "yaw", "duration", "height"))
+    ):
+        raise ValueError("operator_balance_intervention_invalid")
     if command.get("mode") == "release":
         if not isinstance(command.get("supersedes_operation_id"), str) or not command["supersedes_operation_id"]:
             raise ValueError("operator_intervention_target_required")
