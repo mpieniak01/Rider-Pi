@@ -23,7 +23,7 @@ results from the preceding generation. Hidden tabs sleep and failures back off.
 
 Motion, safety-state polling, hold renewal and calibration synchronization retain
 their existing timing. Presentation hints never set actuator timing or watchdog
-limits. Rider-PC and other clients remain compatible with existing fields.
+limits. Existing clients remain compatible with existing fields.
 Multiple API processes each have their own sampler/cache.
 
 

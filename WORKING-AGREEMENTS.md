@@ -1,5 +1,15 @@
 # Working Agreements
 
+## Developer host and device
+
+The consolidated developer layout has sibling `$HOME/venom` and `$HOME/riderpi`.
+The operator panel and host compute belong to `venom-module-rider` in Venom.
+The `riderpi` checkout is device source/tests/deploy, with no local API/mirror.
+One Linux distribution does not mean one venv: Rider-Pi tests use their own
+existing venv (Python 3.12 in the consolidated setup), separate from Venom.
+The device remains on Python 3.9. Rider-PC is retired, never a fallback.
+Read installation/SSH locations from the local profile, not historical reports.
+
 ---
 > **Boot is critical:** application work preserves boot, network, SSH/getty and graphics startup. Do not run broad systemd synchronization or vendor boot scripts during a panel update. See [deployment](docs/DEPLOYMENT.md).
 
@@ -22,7 +32,7 @@
 **You must not:**
 - change pins/hardware or `systemd/` units except those listed in `scripts/systemd-sync.sh`,
 - install packages ad hoc on the robot; device runtime changes require a separate plan,
-- install globally in Ubuntu or into Venom/Rider-PC; fill declared Rider-Pi WSL gaps in its existing `.venv` according to the environment policy,
+- install globally in Ubuntu or into Venom; fill declared Rider-Pi WSL gaps in its existing `.venv` according to the environment policy,
 - run long-lived daemons outside `systemd`,
 - send telemetry/exfiltration.
 
@@ -108,7 +118,6 @@ git push -u origin codex/42-pupil-drift-tuning
 ---
 
 ## 6) Testing
-
 
 ### Test categories — binding rule
 

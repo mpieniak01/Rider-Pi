@@ -73,7 +73,7 @@ firmware i kontraktów HTTP; [VERSION](VERSION) zawiera metadane wydania.
 
 Dla istniejącego robota stosuj [wdrożenie i odtwarzanie](docs_pl/WDROZENIE.md),
 a development przygotuj według [polityki środowisk](docs_pl/POLITYKA_SRODOWISK.md).
-Pi, Rider-PC i Venom zachowują osobne zależności. Na Pi instalujemy pakiety
+Pi, developerski venv testowy i Venom zachowują osobne zależności. Na Pi instalujemy pakiety
 potrzebne wybranemu profilowi; narzędzia dev/test pozostają w WSL/CI.
 Zachowaj istniejącą konfigurację lokalną i sekrety.
 

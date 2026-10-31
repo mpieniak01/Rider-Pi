@@ -1,10 +1,16 @@
 # Development
 
-Rider-Pi i Rider-PC są osobnymi repozytoriami. Wspólny workspace VS Code
-nie zmienia katalogu terminala ani wybranego interpretera. Polecenia wykonuj
-z właściwego repozytorium i korzystaj z jego środowiska.
+Używamy jednego hosta developerskiego Linux z katalogami venom/ i riderpi/ obok siebie.
+Panel operatora i obliczenia hosta należą do niezależnego modułu Rider Venoma.
+Checkout riderpi to kopia developerska kodu urządzenia, bez lokalnego API/mirroru.
+Rider-PC jest wygaszony. Ścieżki bezwzględne wybiera lokalny profil.
+
+Pracuj jako skonfigurowany użytkownik Linux, w "$HOME/riderpi", z istniejącym
+venv (Python 3.12 w układzie wspólnym) i Node 22 dla testów WWW urządzenia.
+Venom ma własne środowisko. Fizyczny Pi pozostaje na Pythonie 3.9.
 
 ```bash
+cd "$HOME/riderpi"
 pwd
 git status --short --branch
 git fetch origin

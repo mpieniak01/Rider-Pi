@@ -96,9 +96,9 @@ Wydanie identycznego, uruchomionego już podglądu nie dziedziczy restartu API.
 
 Porównaj Git, `/api/status/version` i `/healthz`, następnie sprawdź zmienioną
 funkcję. Panel działa na `8080`, bridge ruchu na `8081`. Polecenie ruchu nie jest
-kontrolą wdrożenia weba. Dla kodu Rider-PC uruchamiaj jego panel w WSL
-z istniejącego środowiska (`make start-dev` w repo Rider-PC) i testuj integrację
-z Pi; pakiety i modele PC pozostają w środowisku PC.
+kontrolą wdrożenia weba. Integracja robota po stronie hosta należy do modułu Rider Venoma
+i korzysta ze środowiska Venoma. Checkout urządzenia służy tylko edycji, testom
+i deploy. Nie uruchamiaj Rider-PC ani nie instaluj jego pakietów/modeli.
 
 Obie ścieżki zachowują konfigurację lokalną, runtime i orientację ekranu opisaną
 w [architekturze](ARCHITECTURE.md#fizyczna-orientacja-lcd).

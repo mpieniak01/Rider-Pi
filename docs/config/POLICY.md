@@ -38,15 +38,15 @@ existing ENV values and do not append secrets to user profiles.
 ## WSL and the device
 
 Full software tests and development tools belong to the existing local
-`Rider-Pi/.venv`. Rider-Pc and Venom retain separate stacks. Do not install globally,
+`riderpi/.venv`. The Rider-Pi test venv and Venom runtime remain separate. Do not install globally,
 create another venv for each worktree, or install a package for every import error.
 First identify the selected profile, interpreter and declared requirements.
 
 Explicitly approved WSL preparation reuses that environment:
 
 ```bash
-/home/pi/Rider-Pi/.venv/bin/python -m pip install -r config/agent/requirements-wsl.txt
-/home/pi/Rider-Pi/.venv/bin/python -m pip check
+"$HOME/riderpi/.venv/bin/python" -m pip install -r config/agent/requirements-wsl.txt
+"$HOME/riderpi/.venv/bin/python" -m pip check
 ```
 
 These are WSL instructions, not physical Pi instructions. Do not install
@@ -86,9 +86,9 @@ precise contract.
 Check formatting, imports and software tests in WSL with hardware fakes:
 
 ```bash
-/home/pi/Rider-Pi/.venv/bin/ruff check apps/ common/ services/ scripts/ tests/
-/home/pi/Rider-Pi/.venv/bin/ruff format --check apps/ common/ services/ scripts/ tests/
-RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 /home/pi/Rider-Pi/.venv/bin/python -m pytest
+"$HOME/riderpi/.venv/bin/ruff" check apps/ common/ services/ scripts/ tests/
+"$HOME/riderpi/.venv/bin/ruff" format --check apps/ common/ services/ scripts/ tests/
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 "$HOME/riderpi/.venv/bin/python" -m pytest
 git diff --check
 ```
 

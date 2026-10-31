@@ -38,15 +38,15 @@ respektować istniejące ENV i nie dopisywać sekretów do profili użytkownika.
 ## WSL i urządzenie
 
 Pełne testy oprogramowania oraz narzędzia deweloperskie są w istniejącym lokalnym
-`Rider-Pi/.venv`. Rider-Pc i Venom zachowują osobne stosy; nie instaluj globalnie,
+`riderpi/.venv`. Venv testowy Rider-Pi i runtime Venoma pozostają osobne; nie instaluj globalnie,
 nie twórz następnego venv dla kolejnego worktree i nie instaluj pakietu po każdym
 komunikacie o imporcie. Najpierw ustal aktywny profil, interpreter i wymagania.
 
 Jawnie zatwierdzone przygotowanie WSL korzysta z tego samego środowiska:
 
 ```bash
-/home/pi/Rider-Pi/.venv/bin/python -m pip install -r config/agent/requirements-wsl.txt
-/home/pi/Rider-Pi/.venv/bin/python -m pip check
+"$HOME/riderpi/.venv/bin/python" -m pip install -r config/agent/requirements-wsl.txt
+"$HOME/riderpi/.venv/bin/python" -m pip check
 ```
 
 To instrukcja dla WSL, nie dla fizycznego Pi. Na Pi nie instaluj
@@ -85,9 +85,9 @@ Nie ma domyślnego zabijania, SIGKILL ani automatycznego wznawiania usług.
 Format, importy i testy oprogramowania sprawdzaj w WSL, z atrapami sprzętu:
 
 ```bash
-/home/pi/Rider-Pi/.venv/bin/ruff check apps/ common/ services/ scripts/ tests/
-/home/pi/Rider-Pi/.venv/bin/ruff format --check apps/ common/ services/ scripts/ tests/
-RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 /home/pi/Rider-Pi/.venv/bin/python -m pytest
+"$HOME/riderpi/.venv/bin/ruff" check apps/ common/ services/ scripts/ tests/
+"$HOME/riderpi/.venv/bin/ruff" format --check apps/ common/ services/ scripts/ tests/
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 "$HOME/riderpi/.venv/bin/python" -m pytest
 git diff --check
 ```
 

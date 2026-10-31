@@ -294,7 +294,8 @@ def test_socket_guard_calls_original_only_for_permitted_local_fixture():
     "argv,options",
     [
         (["git", "push", "https://example.invalid/repo"], {}),
-        (["git", "commit"], {"cwd": "/home/pi/Rider-Pi"}),
+        (["git", "commit"], {"cwd": "/home/ubuntu/riderpi"}),
+        (["git", "commit"], {"cwd": "/home/ubuntu/venom"}),
         (["sh", "-c", "true"], {}),
         (["systemctl", "restart", "fixture.service"], {}),
         (["fuser", "-k", "fixture"], {}),

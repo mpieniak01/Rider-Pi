@@ -1,12 +1,12 @@
 # Rider-Pi documentation
 
-[Unified Pi/PC API contracts](api-specs/contracts.md) — New clients negotiate the v1 envelope through Accept; examples without negotiation describe the legacy projection. Reception time does not replace observation time.
+[Device/module API contracts](api-specs/contracts.md) — New clients negotiate the v1 envelope through Accept; examples without negotiation describe the legacy projection. Reception time does not replace observation time.
 
 
-Rider-Pi executes robot commands and hosts local applications. Rider-PC provides
-the operator interface and additional AI processing. The optional paired Venom
-module supplies compute and bounded navigation decisions; Pi retains hardware
-authority. See [Venom compute](COMPUTE_VENOM.md).
+Rider-Pi runs the device API, hardware execution and local robot applications.
+The Venom Rider module supplies the operator panel and host compute. Rider-PC
+is retired. The riderpi Linux checkout is for development/tests/deploy, not a
+local mirror service. See [Venom compute](COMPUTE_VENOM.md).
 
 ## Start here
 

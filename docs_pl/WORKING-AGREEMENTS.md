@@ -1,5 +1,15 @@
 # Ustalenia robocze
 
+## Host developerski i urządzenie
+
+Bieżący układ developerski ma katalogi `$HOME/venom` i `$HOME/riderpi` obok siebie.
+Panel/operator i obliczenia hosta należą do modułu `venom-module-rider` w Venomie.
+Checkout `riderpi` to kod urządzenia/testy/deploy, bez lokalnej usługi API/mirror.
+Wspólna dystrybucja Linux nie oznacza wspólnego venv: testy Rider-Pi używają
+własnego istniejącego venv (Python 3.12 w układzie wspólnym), Venom swojego.
+Urządzenie nadal używa Python 3.9. Rider-PC jest wygaszony, bez fallbacku.
+Ścieżki konkretnej instalacji i SSH bierz z lokalnego profilu, nie z archiwalnych raportów.
+
 ---
 **Cel:** prowadź bezpieczne przyrosty, które działają na RPi. Szanuj istniejące interfejsy. Utrzymuj zużycie energii i CPU nisko.
 
@@ -33,7 +43,7 @@
 - **Platforma:** Raspberry Pi (obraz producenta, Debian 11/Bullseye), **Python 3.9**.
 - **Pakiety:** robot otrzymuje tylko wymagane zależności używanego runtime.
   Pełne testy programowe wykonuj w WSL z `config/agent/requirements-wsl.txt`.
-  Worktree korzystają z istniejącego `.venv` Rider-Pi; stosy Rider-PC i Venom
+  Worktree korzystają z istniejącego `.venv` Rider-Pi; venv testowy Rider-Pi i venv Venoma
   pozostają oddzielne. Zobacz [politykę środowisk](POLITYKA_SRODOWISK.md).
 - **I/O sprzętowe:**
   - UART `/dev/ttyAMA0` – docelowo jeden właściciel ruchu i odczytów.
@@ -109,7 +119,6 @@ git push -u origin codex/42-pupil-drift-tuning
 ---
 
 ## 6) Testowanie
-
 
 ### Kategorie testów — obowiązująca zasada
 

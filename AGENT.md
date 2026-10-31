@@ -1,5 +1,15 @@
 # Rider-Pi Apps — **AGENT** (kontrakt dla asystenta kodu)
 
+## Host developerski i urządzenie
+
+Bieżący układ developerski ma katalogi `$HOME/venom` i `$HOME/riderpi` obok siebie.
+Panel/operator i obliczenia hosta należą do modułu `venom-module-rider` w Venomie.
+Checkout `riderpi` to kod urządzenia/testy/deploy, bez lokalnej usługi API/mirror.
+Wspólna dystrybucja Linux nie oznacza wspólnego venv: testy Rider-Pi używają
+własnego istniejącego venv (Python 3.12 w układzie wspólnym), Venom swojego.
+Urządzenie nadal używa Python 3.9. Rider-PC jest wygaszony, bez fallbacku.
+Ścieżki konkretnej instalacji i SSH bierz z lokalnego profilu, nie z archiwalnych raportów.
+
 > **Cel:** prowadź bezpieczne przyrosty, które działają na RPi. Szanuj istniejące interfejsy. Utrzymuj energię/CPU nisko. Zależności i testy rozdziela [polityka środowisk](docs_pl/POLITYKA_SRODOWISK.md).
 
 ---
@@ -19,7 +29,7 @@
 **Nie wolno:**
 - zmieniać pinów/sprzętu ani unitów `systemd/` poza tymi wymienionymi w `scripts/systemd-sync.sh`,
 - instalować doraźnie pakietów na robocie; zmiana runtime urządzenia wymaga osobnego planu,
-- instalować globalnie w Ubuntu, w Venom lub środowisku Rider-PC; deklarowane braki WSL Rider-Pi uzupełniaj w istniejącym `.venv` zgodnie z polityką środowisk,
+- instalować globalnie w Ubuntu, w środowisku Venoma; deklarowane braki WSL Rider-Pi uzupełniaj w istniejącym `.venv` zgodnie z polityką środowisk,
 - uruchamiać długowiecznych demonów poza `systemd`,
 - wysyłać telemetrii/eksfiltracji.
 
@@ -113,7 +123,6 @@ git push -u origin codex/42-pupil-drift-tuning
 ---
 
 ## 6) Testowanie
-
 
 ### Kategorie testów — obowiązująca zasada
 

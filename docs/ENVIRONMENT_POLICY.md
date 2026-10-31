@@ -1,10 +1,20 @@
 # Environments, dependencies and tests
 
+## Developer host and device
+
+The consolidated developer layout has sibling `$HOME/venom` and `$HOME/riderpi`.
+The operator panel and host compute belong to `venom-module-rider` in Venom.
+The `riderpi` checkout is device source/tests/deploy, with no local API/mirror.
+One Linux distribution does not mean one venv: Rider-Pi tests use their own
+existing venv (Python 3.12 in the consolidated setup), separate from Venom.
+The device remains on Python 3.9. Rider-PC is retired, never a fallback.
+Read installation/SSH locations from the local profile, not historical reports.
+
 ## Where code runs
 
 The physical Rider-Pi uses the manufacturer image, Python 3.9 and packages
 required by its enabled services. WSL runs development and automated tests.
-Rider-PC and Venom have separate stacks.
+The operator panel and host compute run in the Venom Rider module. Rider-PC is retired.
 
 | Scope | Raspberry Pi | Rider-Pi WSL |
 | --- | --- | --- |
@@ -30,8 +40,7 @@ part of the basic WSL test set or an automatic Pi installation.
 ## Prepare WSL
 
 Reuse the existing Rider-Pi `.venv`, including from worktrees. Do not create
-one environment per PR. Install locally, never into global Ubuntu, Venom or
-Rider-PC. Reuse the pip cache; do not copy `site-packages` between projects.
+one environment per PR. Install locally, never into global Ubuntu or the Venom environment. Reuse the pip cache; do not copy `site-packages` between projects.
 Separate stacks may require different versions.
 
 The baseline is `config/agent/requirements-wsl.txt`. Do not automatically
