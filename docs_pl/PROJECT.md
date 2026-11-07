@@ -1,6 +1,6 @@
 # Rider‑Pi Apps — PROJECT
 
-> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne; Pi waliduje odpowiedzi i zachowuje kontrolę wykonania ruchu. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
+> Rider-Pi jest właścicielem wykonania sprzętowego i lokalnego API/aplikacji. Moduł Rider w Venomie dostarcza panel operatora, obliczenia hosta i ograniczone decyzje nawigacyjne. Rider-PC jest wygaszony. Developerski checkout Linux służy edycji, testom i wdrażaniu kodu urządzenia; nie uruchamia serwera lustrzanego. Pi zachowuje władzę nad ruchem.
 
 > Rider‑Pi to nazwa urządzenia (sprzętu). Nasz projekt tworzy niezależne oprogramowanie **Rider‑Pi Apps**, które rozwija funkcje autonomii i interakcji ponad to, co dostarcza producent urządzenia.
 

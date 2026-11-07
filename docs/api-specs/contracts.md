@@ -1,6 +1,6 @@
 # Rider API contracts
 
-This document defines the contract used by Rider-Pi, Rider-PC and the operator screens. Domain data retains its independent version. JSON responses use one small envelope; JPEG, WAV, SVG, Prometheus and SSE retain their native transport.
+This document defines the contract used by Rider-Pi, the Venom Rider module and the operator screens. Domain data retains its independent version. JSON responses use one small envelope; JPEG, WAV, SVG, Prometheus and SSE retain their native transport.
 
 ## Negotiation and compatibility
 

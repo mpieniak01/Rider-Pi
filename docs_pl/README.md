@@ -1,12 +1,12 @@
 # Dokumentacja Rider-Pi
 
-[Jednolity standard kontraktów Pi/PC](api-specs/contracts.md) — Nowy klient negocjuje kopertę v1 nagłówkiem Accept; przykłady bez negocjacji opisują projekcję legacy. Czas odbioru nie zastępuje czasu pomiaru.
+[Kontrakty API urządzenia i modułu](api-specs/contracts.md) — Nowy klient negocjuje kopertę v1 nagłówkiem Accept; przykłady bez negocjacji opisują projekcję legacy. Czas odbioru nie zastępuje czasu pomiaru.
 
 
-Rider-Pi wykonuje polecenia na sprzęcie i zachowuje lokalne aplikacje robota.
-Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny
-sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne;
-Pi zachowuje wykonanie sprzętowe. Zobacz [obliczenia w Venomie](COMPUTE_VENOM.md).
+Rider-Pi uruchamia API urządzenia, wykonanie sprzętowe i aplikacje lokalne robota.
+Moduł Rider Venoma dostarcza panel operatora i obliczenia hosta. Rider-PC jest
+wygaszony. Checkout riderpi w Linux służy developmentowi/testom/deploy, nie
+lokalnej usłudze lustrzanej. Zobacz [obliczenia w Venomie](COMPUTE_VENOM.md).
 
 ## Zacznij tutaj
 

@@ -1,10 +1,20 @@
 # Środowiska, zależności i testy
 
+## Host developerski i urządzenie
+
+Bieżący układ developerski ma katalogi `$HOME/venom` i `$HOME/riderpi` obok siebie.
+Panel/operator i obliczenia hosta należą do modułu `venom-module-rider` w Venomie.
+Checkout `riderpi` to kod urządzenia/testy/deploy, bez lokalnej usługi API/mirror.
+Wspólna dystrybucja Linux nie oznacza wspólnego venv: testy Rider-Pi używają
+własnego istniejącego venv (Python 3.12 w układzie wspólnym), Venom swojego.
+Urządzenie nadal używa Python 3.9. Rider-PC jest wygaszony, bez fallbacku.
+Ścieżki konkretnej instalacji i SSH bierz z lokalnego profilu, nie z archiwalnych raportów.
+
 ## Gdzie działa kod
 
 Rider-Pi ma dwa różne środowiska. Fizyczny robot używa obrazu producenta,
 Pythona 3.9 i pakietów potrzebnych uruchomionym usługom. WSL jest środowiskiem
-programowania oraz automatycznych testów. Rider-PC i Venom mają własne stosy.
+programowania oraz automatycznych testów. Panel i obliczenia hosta należą do modułu Rider Venoma. Rider-PC jest wygaszony.
 
 | Zakres | Raspberry Pi | WSL Rider-Pi |
 | --- | --- | --- |
@@ -30,8 +40,8 @@ zestawu testów WSL ani automatycznej instalacji na Pi.
 ## Przygotowanie WSL
 
 Używamy istniejącego `.venv` Rider-Pi także z jego worktree. Nie tworzymy
-środowiska dla każdego PR. Nie instalujemy globalnie ani do środowiska Venom
-lub Rider-PC. Korzystamy ze wspólnego cache pip; nie kopiujemy `site-packages`
+środowiska dla każdego PR. Nie instalujemy globalnie ani do środowiska
+Venoma. Korzystamy ze wspólnego cache pip; nie kopiujemy `site-packages`
 między projektami. Oddzielne stosy mogą wymagać różnych wersji.
 
 Deklaracja podstawowego zestawu to `config/agent/requirements-wsl.txt`.

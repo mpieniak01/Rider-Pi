@@ -22,7 +22,7 @@ Ukryte karty zasypiają, a po błędach odczyty zwalniają.
 
 Czasy sterowania ruchem, odpytywania bramy bezpieczeństwa, podtrzymania kierunku
 i synchronizacji kalibracji pozostają dotychczasowe. Wskazówki prezentacji nie
-sterują aktuatorami ani watchdogiem. Rider-PC i inni klienci nadal mogą używać
+sterują aktuatorami ani watchdogiem. Istniejący klienci nadal mogą używać
 dotychczasowych pól. Przy wielu procesach API każdy ma własny sampler/cache.
 
 

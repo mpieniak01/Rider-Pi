@@ -1,5 +1,10 @@
 # Integracja z providerem PC / Offload
 
+> **Historyczny protokół zgodności.** Rider-PC jest wygaszony. Ten dokument zapisuje
+> pola starego providera pc utrzymywane w testach zgodności; nie jest instrukcją
+> wdrożenia. Aktywny wykonawca: [obliczenia w Venomie](COMPUTE_VENOM.md).
+
+
 Starszy rejestr providerów nie wybiera executora compute. Domyślnie zachowuje
 HTTPS/loopback. Jeśli nadal używany watchdog ma odpytywać sparowanego Venoma po
 HTTP, operator ustawia `PROVIDER_PC_TRANSPORT_PROFILE=trusted_lan` i
@@ -13,7 +18,7 @@ co błędy sieci urllib. Błędy konfiguracji transportu i niepoprawne capabilit
 pozostają `error` / `pc_error`; żadna z tych klasyfikacji nie zmienia wyboru
 wykonawcy ani żądanego routingu domen.
 
-> Rider-Pi zachowuje wykonanie sprzętowe i aplikacje lokalne. Rider-PC dostarcza panel operatora i dodatkowe przetwarzanie AI. Opcjonalny sparowany moduł Venoma dostarcza obliczenia i ograniczone decyzje nawigacyjne; Pi waliduje odpowiedzi i zachowuje kontrolę wykonania ruchu. Kamienie milowe opisują kierunek, bez potwierdzania wdrożenia.
+> Poniższe sekcje opisują dawny kontrakt providera, nie aktualne wdrożenie Venoma.
 
 Jedyna aktualna referencja kontraktu pomiędzy urządzeniem Rider-Pi a towarzyszącym stosem Rider-PC.  
 Dokument uzupełnia zewnętrzne notatki projektowe w repozytorium Rider-PC (zob.

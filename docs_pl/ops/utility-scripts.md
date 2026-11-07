@@ -10,8 +10,8 @@ osobne procedury. Skrypt diagnostyczny nie jest zgodą na ruch.
 HTTP i piaskownicy. Nie otwiera kamery, audio, LCD ani UART. Użyj istniejącego venv:
 
 ```bash
-PYTHON=/home/pi/Rider-Pi/.venv/bin/python scripts/diag_test-suite.sh
-RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 /home/pi/Rider-Pi/.venv/bin/python -m pytest
+PYTHON="$HOME/riderpi/.venv/bin/python" scripts/diag_test-suite.sh
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 "$HOME/riderpi/.venv/bin/python" -m pytest
 ```
 
 Pełny pytest uruchamiaj w WSL. Nie instaluj pełnego zestawu testowego na lekkim Pi

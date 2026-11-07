@@ -1,5 +1,10 @@
 # Provider / PC Offload Integration
 
+> **Historical compatibility protocol.** Rider-PC is retired. This page records
+> legacy pc-provider fields retained by compatibility tests; it is not a deployment
+> guide. For the active Venom executor use [Venom compute](COMPUTE_VENOM.md).
+
+
 The legacy provider registry does not select the compute executor and keeps
 HTTPS/loopback by default. If its still-selected watchdog must query a paired
 Venom over HTTP, set `PROVIDER_PC_TRANSPORT_PROFILE=trusted_lan`,
@@ -13,7 +18,7 @@ as urllib network failures. Transport configuration errors and invalid
 capabilities remain `error` / `pc_error`; neither classification changes the
 configured executor or requested domain routing.
 
-> Rider-Pi retains hardware execution and local applications. Rider-PC provides operator controls and additional AI processing. The optional paired Venom module supplies compute and bounded navigation decisions; Pi validates replies and retains motion authority. Project milestones describe direction, not verified deployment status.
+> The sections below describe the retired provider contract, not the current Venom deployment.
 
 Single source of truth for the contract between the Rider-Pi device and the Rider-PC companion stack.  
 This document complements the external design notes that live in the Rider-PC repository (see

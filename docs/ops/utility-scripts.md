@@ -11,8 +11,8 @@ permission.
 sandbox tests. It does not open camera, audio, LCD or UART. Reuse the existing venv:
 
 ```bash
-PYTHON=/home/pi/Rider-Pi/.venv/bin/python scripts/diag_test-suite.sh
-RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 /home/pi/Rider-Pi/.venv/bin/python -m pytest
+PYTHON="$HOME/riderpi/.venv/bin/python" scripts/diag_test-suite.sh
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 "$HOME/riderpi/.venv/bin/python" -m pytest
 ```
 
 Run the full software suite in WSL. Do not install it on the lightweight Pi and do

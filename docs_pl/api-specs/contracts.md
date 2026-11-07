@@ -1,4 +1,4 @@
-# Kontrakty API Rider-Pi i Rider-PC
+# Kontrakty API Rider-Pi i modułu Venoma
 
 Specyfikacja interfejsów, danych i reguł zgodności obu paneli. Normatywne wymagania dotyczą koperty oraz pełnych danych domenowych; odczyt API nie potwierdza fizycznego zakończenia ruchu. Inwentarz deklaracji obejmuje też opcjonalne aplikacje i osobny port bramy — ich aktywność sprawdza się osobno.
 

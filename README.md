@@ -71,8 +71,7 @@ runtime upgrade. Version 1.0.0 identifies this project, separately from vendor S
 firmware and HTTP contract versions; [VERSION](VERSION) is the release metadata.
 
 Use [deployment and recovery](docs/DEPLOYMENT.md) for an existing robot and the
-[environment policy](docs/ENVIRONMENT_POLICY.md) to prepare development. Keep Pi,
-Rider-PC and Venom dependencies in their own environments. Install only the
+[environment policy](docs/ENVIRONMENT_POLICY.md) to prepare development. Keep device, development-test and Venom dependencies in their own environments. Install only the
 packages needed by the selected Pi profile; keep dev/test dependencies in WSL/CI.
 Preserve existing local configuration and secrets.
 

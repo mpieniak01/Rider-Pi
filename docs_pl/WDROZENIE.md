@@ -96,9 +96,18 @@ Wydanie identycznego, uruchomionego już podglądu nie dziedziczy restartu API.
 
 Porównaj Git, `/api/status/version` i `/healthz`, następnie sprawdź zmienioną
 funkcję. Panel działa na `8080`, bridge ruchu na `8081`. Polecenie ruchu nie jest
-kontrolą wdrożenia weba. Dla kodu Rider-PC uruchamiaj jego panel w WSL
-z istniejącego środowiska (`make start-dev` w repo Rider-PC) i testuj integrację
-z Pi; pakiety i modele PC pozostają w środowisku PC.
+kontrolą wdrożenia weba. Integracja robota po stronie hosta należy do modułu Rider Venoma
+i korzysta ze środowiska Venoma. Checkout urządzenia służy tylko edycji, testom
+i wdrożeniom. Nie uruchamiaj Rider-PC ani nie instaluj jego pakietów/modeli.
+
+Przed wycofaniem dawnego dostawcy głosu wyślij przez API operatora Pi
+`PATCH /api/providers/voice` z treścią `{"target":"local"}`. Potwierdź
+`persisted: true` w odpowiedzi i sprawdź lokalnego dostawcę przez
+`GET /api/providers/voice`. Po przekroczeniu limitu czasu dawny tryb offload
+może przełączyć dostawcę na `local` i zakończyć proces nasłuchu. Jeśli
+instalacja używa samodzielnego nasłuchu i został on zatrzymany, uruchom na Pi
+`sudo systemctl start rider-voice.service`. Sprawdź status usługi oraz działanie
+lokalnego rozpoznawania i odtwarzania mowy przed zakończeniem migracji.
 
 Obie ścieżki zachowują konfigurację lokalną, runtime i orientację ekranu opisaną
 w [architekturze](ARCHITECTURE.md#fizyczna-orientacja-lcd).
