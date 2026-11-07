@@ -101,6 +101,15 @@ Do not use movement as a web deployment health check. Host-side robot integratio
 the Venom environment. The device checkout is only the source/test/deploy
 workspace. Do not start Rider-PC or install its packages/models.
 
+Before retiring a legacy peer that handled voice, use the Pi operator API to
+send `PATCH /api/providers/voice` with `{"target":"local"}`. Confirm
+`persisted: true` in the response and verify the local provider through
+`GET /api/providers/voice`. The legacy voice offload timeout can select
+`local` and exit without restarting the listener. If this installation uses
+the standalone listener and it stopped, start `rider-voice.service` on the Pi
+with `sudo systemctl start rider-voice.service`. Check its status and verify
+local speech recognition and playback before closing the migration.
+
 Both paths preserve local configuration, runtime and the display orientation
 described in [architecture](../ARCHITECTURE.md#physical-lcd-orientation).
 The tool rejects private env files, `config/local/`, runtime data and local

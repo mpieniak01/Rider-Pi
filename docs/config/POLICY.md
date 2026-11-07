@@ -42,7 +42,7 @@ Full software tests and development tools belong to the existing local
 create another venv for each worktree, or install a package for every import error.
 First identify the selected profile, interpreter and declared requirements.
 
-Explicitly approved WSL preparation reuses that environment:
+Explicitly approved WSL preparation reuses that environment. Run from the Rider-Pi checkout being prepared.
 
 ```bash
 "$HOME/riderpi/.venv/bin/python" -m pip install -r config/agent/requirements-wsl.txt
@@ -83,12 +83,12 @@ precise contract.
 
 ## Validation and deployment paths
 
-Check formatting, imports and software tests in WSL with hardware fakes:
+Run these software checks from the Rider-Pi checkout under validation. The WSL tests use hardware fakes.
 
 ```bash
 "$HOME/riderpi/.venv/bin/ruff" check apps/ common/ services/ scripts/ tests/
 "$HOME/riderpi/.venv/bin/ruff" format --check apps/ common/ services/ scripts/ tests/
-RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 "$HOME/riderpi/.venv/bin/python" -m pytest
+RIDER_PI_CI=1 MOCK_HW=1 RUN_DEVICE_TESTS=0 "$HOME/riderpi/.venv/bin/python" -m pytest tests
 git diff --check
 ```
 

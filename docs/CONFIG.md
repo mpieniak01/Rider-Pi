@@ -111,6 +111,15 @@ these are not instructions to install or run it. Heartbeats never select the
 active Venom executor. Use the persisted device configuration described in
 [Venom compute](COMPUTE_VENOM.md). A Venom failure does not start Rider-PC.
 
+When the legacy peer is selected and `PROVIDER_WATCHDOG_HEARTBEAT_ONLY` is
+enabled, the watchdog checks for an incoming heartbeat every
+`PROVIDER_WATCHDOG_INTERVAL` seconds. The maximum heartbeat age is that
+interval multiplied by `PROVIDER_WATCHDOG_HEARTBEAT_TIMEOUT_MULTIPLIER`. The
+HTTP probe timeout `PROVIDER_WATCHDOG_TIMEOUT` applies to the capability-check
+mode. The health response's `stale` field reflects the registry's separate
+10-second freshness window and can differ from the stored `online` or
+`offline` status.
+
 ## Configuration File Structure
 
 ### Camera Configuration (`camera.toml`)

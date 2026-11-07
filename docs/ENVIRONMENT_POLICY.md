@@ -3,8 +3,10 @@
 ## Developer host and device
 
 The consolidated developer layout has sibling `$HOME/venom` and `$HOME/riderpi`.
-The operator panel and host compute belong to `venom-module-rider` in Venom.
-The `riderpi` checkout is device source/tests/deploy, with no local API/mirror.
+The Venom operator panel and host compute belong to `venom-module-rider`.
+The `riderpi` checkout maintains the on-device API and `/control` panel. The
+developer host uses it for source, tests and deployment without running a
+local copy of the device API or a mirror.
 One Linux distribution does not mean one venv: Rider-Pi tests use their own
 existing venv (Python 3.12 in the consolidated setup), separate from Venom.
 The device remains on Python 3.9. Rider-PC is retired, never a fallback.

@@ -40,7 +40,7 @@ zestawu testów WSL ani automatycznej instalacji na Pi.
 ## Przygotowanie WSL
 
 Używamy istniejącego `.venv` Rider-Pi także z jego worktree. Nie tworzymy
-środowiska dla każdego PR. Nie instalujemy globalnie ani do środowiska Venom
+środowiska dla każdego PR. Nie instalujemy globalnie ani do środowiska
 Venoma. Korzystamy ze wspólnego cache pip; nie kopiujemy `site-packages`
 między projektami. Oddzielne stosy mogą wymagać różnych wersji.
 
