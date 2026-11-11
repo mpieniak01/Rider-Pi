@@ -39,6 +39,7 @@ def _present_config(config):
         },
         "input_region_version": 1,
         "collision_geometry_v1": True,
+        "axis_guidance_v1": True,
         "approval_without_restart_version": 1 if continuous_approval else 0,
         "perception_tuning": presentation(config),
     }

@@ -8,7 +8,8 @@ their legacy sector-and-path checks. There is no automatic migration or motion.
 ## Configuration and calibration
 
 Pi owns `avoidance.geometry.collision`, only with `mode=image`, enabled
-avoidance and protocol 3. All fields are required:
+avoidance and protocol 3. All fields below are required.
+The optional `guidance` extension is described later.
 
 | Field | Meaning / bounds |
 | --- | --- |
@@ -105,3 +106,104 @@ journey, model-input and DecisionLease regression tests. Use the existing venv.
 Automated checks establish software behavior only. Physical acceptance must
 separately demonstrate left/right avoidance, continuation, repeated obstacles,
 and STOP with no available route. Motor acknowledgement alone is insufficient.
+
+## Axis guidance v1: rotation, reobservation and curved steering
+
+An optional `guidance` object inside `avoidance.geometry.collision` selects
+the closed-loop behavior. Both peers must additionally advertise
+`axis_guidance_v1: true`; the panel exposes the combined availability as
+`axis_guidance_supported`. Cold preparation, warm reuse and run startup
+negotiate this capability. Older saved policies remain readable and are not
+silently converted.
+
+All fields in the nested object are required:
+
+| Field | Meaning / bounds |
+| --- | --- |
+| version | Integer 1 |
+| motion_mode | `rotate_then_drive`, `steer` or `auto` |
+| center_deadband | Neutral band around the driving axis, 0–0.25 of corridor half-width |
+| rotation_bounds | Calibrated normalized xyxy rectangle covering the body sweep for both rotation directions, or `null` before calibration |
+
+The driving axis is the midpoint of the configured forward corridor. Obstacle
+pixels inside that corridor determine the side preference; unrelated objects
+at the frame edges do not trigger it. A left obstacle prefers a right correction
+and vice versa, with command directions respecting the mirrored-camera setting.
+A central or balanced obstacle uses qualified path scores and configured
+displacement to break the tie. Preference never overrides a blocked or unknown
+maneuver envelope. The selected side stays fixed during one avoidance maneuver
+to prevent alternating left/right corrections.
+
+The axis is a reference, not a one-pixel collision test: forward clearance still
+requires the full configured body corridor. `axis_evidence` reports the source
+axis, normalized obstacle offset, side, pixel counts, intrusion, bounds and the
+displacement required to leave either edge of that corridor.
+
+The modes have distinct clearance and motion contracts:
+
+- `rotate_then_drive`: confirm the obstacle, submit STOP, perform one bounded
+  in-place rotation (`vx=0`, nonzero yaw), then reassess. Curved paths cannot
+  authorize this rotation.
+- `steer`: qualify the selected full forward+yaw sweep, execute a bounded
+  curved correction and reassess. Rotation is not permitted.
+- `auto`: on the selected/preferred side, use a qualified curved path first;
+  otherwise use a separately qualified rotation. It does not fabricate either
+  type of clearance.
+
+Rotation uses its own `paths.rotation` mask, not the left/right curved masks.
+The common envelope must span the near body corridor and its bottom edge, fit
+inside the source frame and contain at least 64 observed depth pixels.
+Missing depth, incomplete input crop, poor plane support or an obstacle makes
+it ineligible. A new guided draft defaults to `rotate_then_drive` with
+`rotation_bounds: null`: observation and saving remain available, but drive
+requires calibration and a model input covering the whole rectangle. In
+`auto`, missing rotation calibration leaves only qualified curves available.
+
+The rectangle is a conservative image envelope, not an inferred measurement
+of the robot. Calibration must cover the actual body sweep, camera pose,
+rotation speed and pulse duration in both directions. An image that cannot
+observe that sweep cannot authorize a rotation through this contract.
+
+Three consecutive qualified obstacle/path observations are required. Before
+each in-place rotation the planner emits STOP; Pi independently requires the
+prior zero submission. After every correction, captures from before the
+Pi-local permit end plus 100 ms settling cannot authorize further nonzero
+motion. Three fresh clear full-corridor observations release forward travel.
+A continuous journey resets the avoidance budget only through its existing
+maneuver-epoch transition and can then handle the next obstacle.
+
+Progress is the relative reduction in the remaining image displacement toward
+the selected exit, measured after a correction. It can improve while the
+obstacle is still inside the corridor. Existing minimum-progress,
+stalled-correction and maximum-pulse bounds apply. Missing observations,
+blocked selected direction, near guard, recess evidence, manual STOP and TTL
+expiry cannot be bypassed. A temporal policy veto does not consume a correction
+attempt or create motion progress.
+
+The canonical collision SHA-256 includes the entire normalized guidance
+object (both version fields stay integers). Decisions also carry
+`guidance={version:1,motion_mode:...}`. Pi independently verifies configuration
+identity, selected mode, appropriate path proof, fresh capture and motion
+limits before choosing its rotation or steering callback.
+
+## Existing panel and phase-two regression checks
+
+The existing image-geometry settings contain the correction mode, axis neutral
+band and rotation calibration fields. The decision view identifies obstacle
+side and rotation clearance; source overlays draw the driving axis and the
+independent rotation envelope. Saving a changed configuration retains the
+existing approval revocation and observe-only behavior. No extra tab or
+automatic live trial is introduced.
+
+`make check-collision` includes `tests/test_axis_guidance.py`. Its paired
+offline journey sends real module decisions to the Pi DecisionLease under the
+Pi interpreter: two obstacles on opposite sides, STOP, rotation, post-correction
+capture, resumed forward movement, and the next maneuver. It runs both camera
+orientations with list-only motion callbacks. Pi tests also check the actual
+runner's separate zero-forward rotation and nonzero-forward steering payloads
+using a mocked submitter.
+
+Pi targeted checks include both `tests/test_collision_geometry.py` and
+`tests/test_axis_guidance.py`, followed by navigation and journey regressions.
+The isolated browser fixture verifies rotation calibration, mode selection
+and the blocked-start state. These checks do not connect to or drive the robot.

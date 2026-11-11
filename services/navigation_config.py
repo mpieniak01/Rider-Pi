@@ -227,6 +227,9 @@ def validate(data):
         validate_collision(geometry["collision"], data["corridor"])
         if geometry["mode"] != "image" or avoidance["protocol_version"] != 3 or not avoidance["enabled"]:
             raise ValueError("navigation_collision_requires_avoidance_v3")
+        from services.axis_guidance import require_ready
+
+        require_ready(data)
     _validate_avoidance_authority(data, perception, avoidance, geometry)
     from services.model_input import validate_input_policy
 

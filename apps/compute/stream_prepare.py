@@ -188,6 +188,7 @@ def prepare_stream(
     model_tuning_version=None,
     input_region_version=None,
     collision_geometry_version=None,
+    axis_guidance_version=None,
 ):
     """Prepare the selected source and verify policy capabilities within one deadline."""
     streaming = native()
@@ -198,6 +199,7 @@ def prepare_stream(
         and model_tuning_version is None
         and input_region_version is None
         and collision_geometry_version is None
+        and axis_guidance_version is None
     ):
         return None
     if journey_version is not None and (type(journey_version) is not int or journey_version != 1):
@@ -217,6 +219,9 @@ def prepare_stream(
             from services.collision_geometry import require_host
 
             require_host(status, collision_geometry_version)
+            from services.axis_guidance import require_host as require_guidance
+
+            require_guidance(status, axis_guidance_version)
             if snapshot() != config:
                 raise ComputeError("navigation_configuration_changed", 409)
             if clock() >= deadline:
@@ -236,6 +241,7 @@ def prepare_stream(
             model_tuning_version,
             input_region_version,
             collision_geometry_version,
+            axis_guidance_version,
         )
     finally:
         if owns_opener and hasattr(opener, "close"):
@@ -256,6 +262,7 @@ def _prepare_native_stream(
     model_tuning_version=None,
     input_region_version=None,
     collision_geometry_version=None,
+    axis_guidance_version=None,
 ):
     """Poll a matching native source while checking the current host capabilities."""
     while clock() < deadline:
@@ -277,6 +284,9 @@ def _prepare_native_stream(
         from services.collision_geometry import require_host
 
         require_host(status, collision_geometry_version)
+        from services.axis_guidance import require_host as require_guidance
+
+        require_guidance(status, axis_guidance_version)
         if clock() >= deadline:
             break
         if snapshot() != config:

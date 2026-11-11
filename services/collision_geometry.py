@@ -19,7 +19,8 @@ def selection(config):
 def validate(value, corridor):
     if (
         not isinstance(value, dict)
-        or set(value) != FIELDS
+        or not FIELDS <= set(value)
+        or set(value) - FIELDS - {"guidance"}
         or type(value.get("version")) is not int
         or value["version"] != 1
     ):
@@ -51,6 +52,10 @@ def validate(value, corridor):
         raise ValueError("navigation_collision_reference_incomplete")
     if d - b + 1e-9 < min(0.30, y1) or c - a + 1e-9 < min(0.30, x1):
         raise ValueError("navigation_collision_reference_insufficient")
+    if "guidance" in value:
+        from services.axis_guidance import validate as validate_guidance
+
+        validate_guidance(value["guidance"], corridor)
     return value
 
 
@@ -59,12 +64,18 @@ def proof(config):
     validate(value, config["corridor"])
     normalized = {key: float(value[key]) for key in FIELDS - {"version", "reference_corridor"}}
     normalized.update(version=1, reference_corridor=[float(v) for v in value["reference_corridor"]])
+    if "guidance" in value:
+        from services.axis_guidance import validate as validate_guidance
+
+        normalized["guidance"] = validate_guidance(value["guidance"], config["corridor"])
     payload = {"collision": normalized, "corridor": [float(v) for v in config["corridor"]]}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return {"version": 1, "sha256": hashlib.sha256(encoded.encode()).hexdigest()}
 
 
 def evidence_valid(config, decision):
+    from services.axis_guidance import evidence_valid as guidance_valid
+
     actual = decision.get("collision_geometry")
     if selection(config) is None:
         return actual is None
@@ -76,6 +87,7 @@ def evidence_valid(config, decision):
             and decision.get("geometry") == "image_collision_corridor"
             and path_valid(decision, "center", require_clear=False)
             and path_valid(decision, "guard")
+            and guidance_valid(config, decision)
         )
     except (ValueError, KeyError, TypeError):
         return False
@@ -107,4 +119,9 @@ def require_host(status, version):
 
 
 def preparation_options(config):
-    return {"collision_geometry_version": 1} if selection(config) is not None else {}
+    from services.axis_guidance import selection as guidance
+
+    options = {"collision_geometry_version": 1} if selection(config) is not None else {}
+    if guidance(config) is not None:
+        options["axis_guidance_version"] = 1
+    return options

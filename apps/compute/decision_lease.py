@@ -33,6 +33,7 @@ class DecisionLease:
         self.turn_count = 0
         self.journey = JourneyProgress(journey, clock) if journey is not None else None
         self.paused_for_obstacle = False
+        self.correction_after = None
         self.pause = pause
         self.feedback_wait = feedback_wait and pause is not None
         self.feedback_deadline = None
@@ -214,6 +215,13 @@ class DecisionLease:
             self._halt("navigation_collision_evidence_invalid")
             return None
         if (
+            decision["action"] != "stop"
+            and self.correction_after is not None
+            and captured_monotonic <= self.correction_after
+        ):
+            self._halt("avoidance_capture_pending")
+            return None
+        if (
             identity["protocol_version"] == 3
             and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
             and decision["action"] != "stop"
@@ -270,6 +278,10 @@ class DecisionLease:
             actions |= {"turn_left", "turn_right"}
         if protocol_version == 3:
             actions |= {"steer_left", "steer_right"}
+            from services.axis_guidance import allows_turn
+
+            if allows_turn(self.config):
+                actions |= {"turn_left", "turn_right"}
         return actions
 
     def _await_late_go(self, decision, now):
@@ -378,7 +390,7 @@ class DecisionLease:
             or decision.get("model_sha256") != self.config["model_sha256"]
             or decision.get("state") != "obstacle"
             or decision.get("farther_outlier_pixels", 0) != 0
-            or (collision and not path_valid(decision, side))
+            or (collision and not path_valid(decision, side if curved else "rotation"))
             or (not collision and (sector.get("state") != "clear" or sector.get("coverage_complete") is not True))
             or type(decision.get("maneuver_clear_count")) is not int
             or decision["maneuver_clear_count"] < 3
@@ -401,6 +413,10 @@ class DecisionLease:
         self.paused_for_obstacle = False
         try:
             callback(side, duration)
+            from services.axis_guidance import selection as guidance
+
+            if guidance(self.config) is not None:
+                self.correction_after = self.deadline + 0.1
             if self.journey is not None:
                 self.journey.corrected(decision["action"], self.deadline)
         except Exception:
