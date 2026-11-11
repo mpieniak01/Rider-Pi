@@ -1,5 +1,8 @@
 # Image collision geometry v1
 
+For the established XGO-Rider CM4 dimensions, camera height and saved image
+reference, see [Robot geometry and image reference](ROBOT_GEOMETRY_PL.md).
+
 Automat2 can qualify an observed maneuver envelope instead of requiring an
 entire adjacent image sector to be empty. The optional capability is
 `collision_geometry_v1: true` on both peers. Existing configurations retain
