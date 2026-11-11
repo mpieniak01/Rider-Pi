@@ -136,7 +136,8 @@ def _validated_avoidance(avoidance):
 
 
 def _validated_geometry(geometry):
-    if not isinstance(geometry, dict) or set(geometry) != set(DEFAULT["avoidance"]["geometry"]):
+    required = set(DEFAULT["avoidance"]["geometry"])
+    if not isinstance(geometry, dict) or not required <= set(geometry) or set(geometry) - required - {"collision"}:
         raise ValueError("navigation_geometry_invalid")
     if geometry["mode"] not in ("ground", "image"):
         raise ValueError("navigation_geometry_invalid")
@@ -220,6 +221,12 @@ def validate(data):
     _validate_model_approval(data, perception)
     avoidance = _validated_avoidance(data["avoidance"])
     geometry = _validated_geometry(avoidance["geometry"])
+    if "collision" in geometry:
+        from services.collision_geometry import validate as validate_collision
+
+        validate_collision(geometry["collision"], data["corridor"])
+        if geometry["mode"] != "image" or avoidance["protocol_version"] != 3 or not avoidance["enabled"]:
+            raise ValueError("navigation_collision_requires_avoidance_v3")
     _validate_avoidance_authority(data, perception, avoidance, geometry)
     from services.model_input import validate_input_policy
 
@@ -351,6 +358,17 @@ def configure_locked(body):
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         _require_configuration_goals_stopped(body, old, proposed)
         engine_changed = _apply_perception_changes(old, proposed)
+        from services.collision_geometry import selection
+
+        if selection(proposed) is not None and any(
+            proposed[key] != old[key] for key in ("corridor", "speed", "max_motion_ms", "avoidance")
+        ):
+            # A changed envelope or pulse must be observed before its new approval.
+            from services.navigation_approval import approval_only
+
+            if not approval_only(old, proposed):
+                proposed.update(verified=False, mode="observe")
+                proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
         changed = any(
             proposed[k] != old[k]
             for k in (

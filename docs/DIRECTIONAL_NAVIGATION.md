@@ -11,7 +11,8 @@ Protocol v2 keeps STOP then yaw-only turn_left/turn_right. Explicit protocol v3
 uses steer_left/steer_right: existing low vx and bounded yaw in one submission.
 Old enabled policies lacking a maneuver version migrate to v2. Policies without
 geometry migrate to image mode rather than silently gaining a new projection.
-V3 image mode remains the legacy mask approximation; ground mode is opt-in for
+Without [collision geometry v1](COLLISION_GEOMETRY_V1.md), V3 image mode retains
+the legacy mask approximation; ground mode is opt-in for
 an existing installation.
 
 Every nonzero reply must match run, frame, sequence, revision, model and current

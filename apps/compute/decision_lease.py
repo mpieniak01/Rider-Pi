@@ -208,6 +208,11 @@ class DecisionLease:
         if decision.get("action") not in actions:
             self._halt("decision_invalid_action")
             return None
+        from services.collision_geometry import evidence_valid
+
+        if decision["action"] != "stop" and not evidence_valid(self.config, decision):
+            self._halt("navigation_collision_evidence_invalid")
+            return None
         if (
             identity["protocol_version"] == 3
             and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
@@ -356,9 +361,12 @@ class DecisionLease:
         curved = decision["action"].startswith("steer_")
         callback = self.steer if curved else self.turn
         side = decision["action"].split("_", 1)[1]
+        from services.collision_geometry import path_valid, selection
+
+        collision = selection(self.config) is not None
         sectors = decision.get("sectors")
         sector = sectors.get(side) if isinstance(sectors, dict) else None
-        if not isinstance(sector, dict):
+        if not collision and not isinstance(sector, dict):
             self._halt("avoidance_invalid_sector")
             return False
         if (
@@ -370,8 +378,8 @@ class DecisionLease:
             or decision.get("model_sha256") != self.config["model_sha256"]
             or decision.get("state") != "obstacle"
             or decision.get("farther_outlier_pixels", 0) != 0
-            or sector.get("state") != "clear"
-            or sector.get("coverage_complete") is not True
+            or (collision and not path_valid(decision, side))
+            or (not collision and (sector.get("state") != "clear" or sector.get("coverage_complete") is not True))
             or type(decision.get("maneuver_clear_count")) is not int
             or decision["maneuver_clear_count"] < 3
             or self.turn_count >= settings["max_turn_pulses"]

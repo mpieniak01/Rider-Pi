@@ -65,6 +65,7 @@ class NavigationRunner(NavigationCycle):
         self.decision_trace = deque(maxlen=12)
         self.frame_trace = deque(maxlen=4)
         self.motion_failure = None
+        self.last_motion_submission = None
         self.input_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
@@ -235,7 +236,20 @@ class NavigationRunner(NavigationCycle):
             },
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
-        if not self._record_motion_submission(speed, yaw, result, code):
+        accepted = self._record_motion_submission(speed, yaw, result, code)
+        self.last_motion_submission = {
+            "run_id": self.run_id,
+            "config_revision": self.policy["revision"],
+            "frame_id": (self.last_result or {}).get("frame_id"),
+            "sequence": self.motion_sequence,
+            "vx": speed,
+            "yaw": yaw,
+            "duration_ms": round(duration * 1000, 3),
+            "status": "pending" if accepted and code == 202 else "accepted" if accepted else "rejected",
+            "http_status": code,
+            "submitted_monotonic": self.clock(),
+        }
+        if not accepted:
             self._motion_rejected(result, code)
 
     def _record_motion_submission(self, speed, yaw, result, code):
@@ -465,6 +479,9 @@ class NavigationRunner(NavigationCycle):
             "running": not self.closed.is_set() and not terminal,
             "stop_reason": lease.reason,
             "motion_failure": self.motion_failure,
+            "motion_submission": self.last_motion_submission
+            if (self.last_motion_submission or {}).get("run_id") == self.run_id
+            else None,
             "input_failure": self.input_failure,
         }
         status_started = self.clock()
@@ -555,8 +572,10 @@ class NavigationRunner(NavigationCycle):
     def _start_run(self):
         """Admit a fresh run after negotiating every capability required by its policy."""
         from apps.compute.stream_prepare import prepare_stream
+        from services.collision_geometry import preparation_options
 
         prepared = prepare_stream(
+            **preparation_options(self.policy),
             selection=self.selection,
             max_age_ms=self.policy["decision_budget_ms"],
             **({"model_tuning_version": 1} if self.policy["perception"].get("semantic_models") else {}),
