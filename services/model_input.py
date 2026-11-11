@@ -41,6 +41,10 @@ def validate_input_policy(config):
     if not (a <= x0 and b <= top and c >= x1 and d >= y1):
         raise ValueError("navigation_input_region_excludes_reference")
     geometry = config.get("avoidance", {}).get("geometry", {})
+    if geometry.get("collision") is not None:
+        x0, y0, x1, y1 = geometry["collision"]["reference_corridor"]
+        if not (a <= x0 and b <= y0 and c >= x1 and d >= y1):
+            raise ValueError("navigation_input_region_excludes_reference")
     if (
         config.get("avoidance", {}).get("enabled")
         and geometry.get("mode") == "ground"

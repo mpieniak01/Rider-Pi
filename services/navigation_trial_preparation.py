@@ -5,6 +5,7 @@ import math
 
 from apps.safety.state import atomic_write
 from common.service_catalog import CAMERA_CAPTURE_UNITS, task_units
+from services.collision_geometry import preparation_options
 from services.navigation_trial import ARMED_START_BUDGET_S, PREPARATION_BUDGET_S, TrialError, public_status
 
 
@@ -244,6 +245,7 @@ class TrialPreparation:
         self.progress("stream_prepare")
         self.guard()
         prepare_stream(
+            **preparation_options(config),
             timeout_s=min(2.0, max(0.01, self.context["deadline"] - self.clock())),
             max_age_ms=config.get("decision_budget_ms", 300),
             **({"journey_version": 1} if self.is_journey else {}),
@@ -294,6 +296,7 @@ class TrialPreparation:
 
         try:
             prepared = prepare_stream(
+                **preparation_options(self.policy()),
                 timeout_s=min(2.0, max(0.01, self.context["deadline"] - self.clock())),
                 max_age_ms=self.policy().get("decision_budget_ms", 300),
                 journey_version=1,
@@ -506,6 +509,8 @@ class TrialPreparation:
         if isinstance(error, ComputeError) and error.code in {
             "navigation_journey_update_required",
             "navigation_input_region_update_required",
+            "navigation_collision_update_required",
+            "navigation_guidance_update_required",
         }:
             raise TrialError(error.code, 409, details={"preparation": diagnostic}) from error
         known = {

@@ -33,6 +33,7 @@ class DecisionLease:
         self.turn_count = 0
         self.journey = JourneyProgress(journey, clock) if journey is not None else None
         self.paused_for_obstacle = False
+        self.correction_after = None
         self.pause = pause
         self.feedback_wait = feedback_wait and pause is not None
         self.feedback_deadline = None
@@ -208,13 +209,7 @@ class DecisionLease:
         if decision.get("action") not in actions:
             self._halt("decision_invalid_action")
             return None
-        if (
-            identity["protocol_version"] == 3
-            and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
-            and decision["action"] != "stop"
-            and not self._ground_evidence(decision)
-        ):
-            self._halt("navigation_ground_evidence_invalid")
+        if not self._admit_maneuver_evidence(decision, identity["protocol_version"], captured_monotonic):
             return None
         if remaining <= 0:
             # A correctly bound late GO is never actuated. A continuous journey
@@ -224,6 +219,30 @@ class DecisionLease:
             self._halt("decision_invalid_or_expired")
             return None
         return identity, remaining
+
+    def _admit_maneuver_evidence(self, decision, protocol_version, captured_monotonic):
+        """Reject invalid or stale collision and ground evidence in order."""
+        from services.collision_geometry import evidence_valid
+
+        if decision["action"] != "stop" and not evidence_valid(self.config, decision):
+            self._halt("navigation_collision_evidence_invalid")
+            return False
+        if (
+            decision["action"] != "stop"
+            and self.correction_after is not None
+            and captured_monotonic <= self.correction_after
+        ):
+            self._halt("avoidance_capture_pending")
+            return False
+        if (
+            protocol_version == 3
+            and self.config["avoidance"].get("geometry", {}).get("mode") == "ground"
+            and decision["action"] != "stop"
+            and not self._ground_evidence(decision)
+        ):
+            self._halt("navigation_ground_evidence_invalid")
+            return False
+        return True
 
     def _reply_identity_matches(self, decision, identity, sequence, captured_monotonic, now):
         return not (
@@ -265,6 +284,10 @@ class DecisionLease:
             actions |= {"turn_left", "turn_right"}
         if protocol_version == 3:
             actions |= {"steer_left", "steer_right"}
+            from services.axis_guidance import allows_turn
+
+            if allows_turn(self.config):
+                actions |= {"turn_left", "turn_right"}
         return actions
 
     def _await_late_go(self, decision, now):
@@ -356,26 +379,15 @@ class DecisionLease:
         curved = decision["action"].startswith("steer_")
         callback = self.steer if curved else self.turn
         side = decision["action"].split("_", 1)[1]
+        from services.collision_geometry import selection
+
+        collision = selection(self.config) is not None
         sectors = decision.get("sectors")
         sector = sectors.get(side) if isinstance(sectors, dict) else None
-        if not isinstance(sector, dict):
+        if not collision and not isinstance(sector, dict):
             self._halt("avoidance_invalid_sector")
             return False
-        if (
-            callback is None
-            or not settings["sweep_verified"]
-            or (not curved and not self.paused_for_obstacle)
-            or self.config["mode"] != "drive"
-            or not self.config["verified"]
-            or decision.get("model_sha256") != self.config["model_sha256"]
-            or decision.get("state") != "obstacle"
-            or decision.get("farther_outlier_pixels", 0) != 0
-            or sector.get("state") != "clear"
-            or sector.get("coverage_complete") is not True
-            or type(decision.get("maneuver_clear_count")) is not int
-            or decision["maneuver_clear_count"] < 3
-            or self.turn_count >= settings["max_turn_pulses"]
-        ):
+        if not self._turn_authorized(decision, settings, callback, curved, collision, sector, side):
             self._halt("avoidance_not_authorized")
             return False
         if curved and not self._turn_paths_clear(decision, side):
@@ -393,12 +405,36 @@ class DecisionLease:
         self.paused_for_obstacle = False
         try:
             callback(side, duration)
+            from services.axis_guidance import selection as guidance
+
+            if guidance(self.config) is not None:
+                self.correction_after = self.deadline + 0.1
             if self.journey is not None:
                 self.journey.corrected(decision["action"], self.deadline)
         except Exception:
             self._halt("motion_submission_failed")
             raise
         return True
+
+    def _turn_authorized(self, decision, settings, callback, curved, collision, sector, side):
+        """Keep every original maneuver permission check in the same order."""
+        from services.collision_geometry import path_valid
+
+        return not (
+            callback is None
+            or not settings["sweep_verified"]
+            or (not curved and not self.paused_for_obstacle)
+            or self.config["mode"] != "drive"
+            or not self.config["verified"]
+            or decision.get("model_sha256") != self.config["model_sha256"]
+            or decision.get("state") != "obstacle"
+            or decision.get("farther_outlier_pixels", 0) != 0
+            or (collision and not path_valid(decision, side if curved else "rotation"))
+            or (not collision and (sector.get("state") != "clear" or sector.get("coverage_complete") is not True))
+            or type(decision.get("maneuver_clear_count")) is not int
+            or decision["maneuver_clear_count"] < 3
+            or self.turn_count >= settings["max_turn_pulses"]
+        )
 
     def _ground_evidence(self, decision):
         geometry = self.config["avoidance"].get("geometry", {})

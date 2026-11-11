@@ -14,6 +14,8 @@
 
 [Dokumentacja po polsku](README_PL.md) · [Documentation](docs/README.md) · [Release notes](docs/release-notes/v1.0.0.md)
 
+Established robot dimensions and camera reference: [ROBOT_GEOMETRY_PL.md](docs/ROBOT_GEOMETRY_PL.md).
+
 Independent, educational software for the two-wheeled Yahboom Rider-Pi robot.
 It runs local applications, exposes an operator panel and keeps hardware execution
 on the Raspberry Pi. This is a community project, unaffiliated with the manufacturer.

@@ -65,6 +65,7 @@ class NavigationRunner(NavigationCycle):
         self.decision_trace = deque(maxlen=12)
         self.frame_trace = deque(maxlen=4)
         self.motion_failure = None
+        self.last_motion_submission = None
         self.input_failure = None
         self.request_roundtrip_ms = None
         self.response_age_ms = None
@@ -235,7 +236,23 @@ class NavigationRunner(NavigationCycle):
             },
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
-        if not self._record_motion_submission(speed, yaw, result, code):
+        accepted = self._record_motion_submission(speed, yaw, result, code)
+        status = "rejected"
+        if accepted:
+            status = "pending" if code == 202 else "accepted"
+        self.last_motion_submission = {
+            "run_id": self.run_id,
+            "config_revision": self.policy["revision"],
+            "frame_id": (self.last_result or {}).get("frame_id"),
+            "sequence": self.motion_sequence,
+            "vx": speed,
+            "yaw": yaw,
+            "duration_ms": round(duration * 1000, 3),
+            "status": status,
+            "http_status": code,
+            "submitted_monotonic": self.clock(),
+        }
+        if not accepted:
             self._motion_rejected(result, code)
 
     def _record_motion_submission(self, speed, yaw, result, code):
@@ -465,6 +482,9 @@ class NavigationRunner(NavigationCycle):
             "running": not self.closed.is_set() and not terminal,
             "stop_reason": lease.reason,
             "motion_failure": self.motion_failure,
+            "motion_submission": self.last_motion_submission
+            if (self.last_motion_submission or {}).get("run_id") == self.run_id
+            else None,
             "input_failure": self.input_failure,
         }
         status_started = self.clock()
@@ -476,39 +496,43 @@ class NavigationRunner(NavigationCycle):
         if self.policy["mode"] == "drive":
             self.decision_trace.append(dict(row))
             if self.closed.is_set() or terminal:
-                # Persist only after the drive has stopped; observation never
-                # replaces its outcome or writes to the drive recorder.
-                archive = io.BytesIO()
-                with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
-                    frames = []
-                    for index, frame in enumerate(self.frame_trace):
-                        name = f"frame-{index}.jpg"
-                        bundle.writestr(zipfile.ZipInfo(name), frame["data"])
-                        frames.append(
-                            {
-                                "file": name,
-                                "captured_at": frame["captured_at"],
-                                "input_id": frame["input_id"],
-                                "sha256": hashlib.sha256(frame["data"]).hexdigest(),
-                            }
-                        )
-                    bundle.writestr(
-                        zipfile.ZipInfo("manifest.json"),
-                        json.dumps(
-                            {
-                                "outcome": row,
-                                "decisions": list(self.decision_trace),
-                                "frames": frames,
-                            }
-                        ),
-                    )
-                temporary = target.with_name(".navigation-trial-" + self.run_id + ".tmp")
-                try:
-                    temporary.write_bytes(archive.getvalue())
-                    temporary.replace(target.with_name("navigation_trial.zip"))
-                    _write(target.with_name("navigation_trial.json"), row)
-                finally:
-                    temporary.unlink(missing_ok=True)
+                self._write_trial_archive(target, row, _write)
+
+    def _write_trial_archive(self, target, row, write):
+        """Persist a completed drive trace without affecting observation."""
+        # Persist only after the drive has stopped; observation never
+        # replaces its outcome or writes to the drive recorder.
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
+            frames = []
+            for index, frame in enumerate(self.frame_trace):
+                name = f"frame-{index}.jpg"
+                bundle.writestr(zipfile.ZipInfo(name), frame["data"])
+                frames.append(
+                    {
+                        "file": name,
+                        "captured_at": frame["captured_at"],
+                        "input_id": frame["input_id"],
+                        "sha256": hashlib.sha256(frame["data"]).hexdigest(),
+                    }
+                )
+            bundle.writestr(
+                zipfile.ZipInfo("manifest.json"),
+                json.dumps(
+                    {
+                        "outcome": row,
+                        "decisions": list(self.decision_trace),
+                        "frames": frames,
+                    }
+                ),
+            )
+        temporary = target.with_name(".navigation-trial-" + self.run_id + ".tmp")
+        try:
+            temporary.write_bytes(archive.getvalue())
+            temporary.replace(target.with_name("navigation_trial.zip"))
+            write(target.with_name("navigation_trial.json"), row)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def watch(self):
         while not self.closed.wait(0.02):
@@ -555,8 +579,10 @@ class NavigationRunner(NavigationCycle):
     def _start_run(self):
         """Admit a fresh run after negotiating every capability required by its policy."""
         from apps.compute.stream_prepare import prepare_stream
+        from services.collision_geometry import preparation_options
 
         prepared = prepare_stream(
+            **preparation_options(self.policy),
             selection=self.selection,
             max_age_ms=self.policy["decision_budget_ms"],
             **({"model_tuning_version": 1} if self.policy["perception"].get("semantic_models") else {}),
