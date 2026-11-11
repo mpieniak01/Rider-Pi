@@ -240,8 +240,7 @@ def prepare_stream(
             temporal_version,
             model_tuning_version,
             input_region_version,
-            collision_geometry_version,
-            axis_guidance_version,
+            (collision_geometry_version, axis_guidance_version),
         )
     finally:
         if owns_opener and hasattr(opener, "close"):
@@ -261,10 +260,10 @@ def _prepare_native_stream(
     temporal_version=None,
     model_tuning_version=None,
     input_region_version=None,
-    collision_geometry_version=None,
-    axis_guidance_version=None,
+    geometry_versions=(None, None),
 ):
     """Poll a matching native source while checking the current host capabilities."""
+    collision_geometry_version, axis_guidance_version = geometry_versions
     while clock() < deadline:
         if snapshot() != config:
             raise ComputeError("navigation_configuration_changed", 409)

@@ -334,6 +334,22 @@ def _apply_perception_changes(old, proposed):
     return engine_changed
 
 
+def _revoke_changed_collision(old, proposed):
+    """Revoke collision approval before persisting a changed envelope."""
+    from services.collision_geometry import selection
+
+    if (selection(old) is not None or selection(proposed) is not None) and any(
+        proposed[key] != old[key] for key in ("corridor", "speed", "max_motion_ms", "avoidance")
+    ):
+        # A changed envelope or pulse must be observed before its new approval.
+        from services.navigation_approval import approval_only
+
+        if not approval_only(old, proposed):
+            proposed.update(verified=False, mode="observe")
+            if isinstance(proposed["avoidance"], dict):
+                proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
+
+
 def configure_locked(body):
     """Caller already holds the shared feature selection transaction."""
     if (
@@ -361,18 +377,7 @@ def configure_locked(body):
         proposed = {**old, **body["values"], "revision": old["revision"] + 1}
         _require_configuration_goals_stopped(body, old, proposed)
         engine_changed = _apply_perception_changes(old, proposed)
-        from services.collision_geometry import selection
-
-        if (selection(old) is not None or selection(proposed) is not None) and any(
-            proposed[key] != old[key] for key in ("corridor", "speed", "max_motion_ms", "avoidance")
-        ):
-            # A changed envelope or pulse must be observed before its new approval.
-            from services.navigation_approval import approval_only
-
-            if not approval_only(old, proposed):
-                proposed.update(verified=False, mode="observe")
-                if isinstance(proposed["avoidance"], dict):
-                    proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
+        _revoke_changed_collision(old, proposed)
         changed = any(
             proposed[k] != old[k]
             for k in (

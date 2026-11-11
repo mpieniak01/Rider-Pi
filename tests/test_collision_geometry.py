@@ -267,7 +267,8 @@ def test_trial_preserves_required_host_update_code(code):
 
     with pytest.raises(TrialError) as caught:
         TrialPreparation._raise_failure(None, ComputeError(code, 409), {"stage": "stream_prepare"})
-    assert caught.value.code == code and caught.value.status == 409
+    assert caught.value.code == code
+    assert caught.value.status == 409
     assert caught.value.details["preparation"]["stage"] == "stream_prepare"
 
 

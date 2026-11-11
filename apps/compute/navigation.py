@@ -237,6 +237,9 @@ class NavigationRunner(NavigationCycle):
             **({"publisher": self.motion_publisher, "timeout_s": 0.0} if self.motion_publisher is not None else {}),
         )
         accepted = self._record_motion_submission(speed, yaw, result, code)
+        status = "rejected"
+        if accepted:
+            status = "pending" if code == 202 else "accepted"
         self.last_motion_submission = {
             "run_id": self.run_id,
             "config_revision": self.policy["revision"],
@@ -245,7 +248,7 @@ class NavigationRunner(NavigationCycle):
             "vx": speed,
             "yaw": yaw,
             "duration_ms": round(duration * 1000, 3),
-            "status": "pending" if accepted and code == 202 else "accepted" if accepted else "rejected",
+            "status": status,
             "http_status": code,
             "submitted_monotonic": self.clock(),
         }
@@ -493,39 +496,43 @@ class NavigationRunner(NavigationCycle):
         if self.policy["mode"] == "drive":
             self.decision_trace.append(dict(row))
             if self.closed.is_set() or terminal:
-                # Persist only after the drive has stopped; observation never
-                # replaces its outcome or writes to the drive recorder.
-                archive = io.BytesIO()
-                with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
-                    frames = []
-                    for index, frame in enumerate(self.frame_trace):
-                        name = f"frame-{index}.jpg"
-                        bundle.writestr(zipfile.ZipInfo(name), frame["data"])
-                        frames.append(
-                            {
-                                "file": name,
-                                "captured_at": frame["captured_at"],
-                                "input_id": frame["input_id"],
-                                "sha256": hashlib.sha256(frame["data"]).hexdigest(),
-                            }
-                        )
-                    bundle.writestr(
-                        zipfile.ZipInfo("manifest.json"),
-                        json.dumps(
-                            {
-                                "outcome": row,
-                                "decisions": list(self.decision_trace),
-                                "frames": frames,
-                            }
-                        ),
-                    )
-                temporary = target.with_name(".navigation-trial-" + self.run_id + ".tmp")
-                try:
-                    temporary.write_bytes(archive.getvalue())
-                    temporary.replace(target.with_name("navigation_trial.zip"))
-                    _write(target.with_name("navigation_trial.json"), row)
-                finally:
-                    temporary.unlink(missing_ok=True)
+                self._write_trial_archive(target, row, _write)
+
+    def _write_trial_archive(self, target, row, write):
+        """Persist a completed drive trace without affecting observation."""
+        # Persist only after the drive has stopped; observation never
+        # replaces its outcome or writes to the drive recorder.
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
+            frames = []
+            for index, frame in enumerate(self.frame_trace):
+                name = f"frame-{index}.jpg"
+                bundle.writestr(zipfile.ZipInfo(name), frame["data"])
+                frames.append(
+                    {
+                        "file": name,
+                        "captured_at": frame["captured_at"],
+                        "input_id": frame["input_id"],
+                        "sha256": hashlib.sha256(frame["data"]).hexdigest(),
+                    }
+                )
+            bundle.writestr(
+                zipfile.ZipInfo("manifest.json"),
+                json.dumps(
+                    {
+                        "outcome": row,
+                        "decisions": list(self.decision_trace),
+                        "frames": frames,
+                    }
+                ),
+            )
+        temporary = target.with_name(".navigation-trial-" + self.run_id + ".tmp")
+        try:
+            temporary.write_bytes(archive.getvalue())
+            temporary.replace(target.with_name("navigation_trial.zip"))
+            write(target.with_name("navigation_trial.json"), row)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def watch(self):
         while not self.closed.wait(0.02):

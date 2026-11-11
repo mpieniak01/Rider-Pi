@@ -110,9 +110,11 @@ def test_runner_rotation_submits_zero_forward_and_curved_motion_keeps_forward(mo
     runner.lease.deadline = 0.3
     monkeypatch.setattr(runner, "_authority", lambda: True)
     runner.turn("right", 0.1)
-    assert setup[-1][-1]["vx"] == 0.0 and setup[-1][-1]["yaw"] < 0
+    assert setup[-1][-1]["vx"] == 0.0
+    assert setup[-1][-1]["yaw"] < 0
     runner.steer("left", 0.1)
-    assert setup[-1][-1]["vx"] == runner.policy["speed"] and setup[-1][-1]["yaw"] > 0
+    assert setup[-1][-1]["vx"] == runner.policy["speed"]
+    assert setup[-1][-1]["yaw"] > 0
 
 
 @pytest.mark.parametrize("capability", [None, False, 1])
