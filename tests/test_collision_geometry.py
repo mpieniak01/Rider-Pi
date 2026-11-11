@@ -221,6 +221,85 @@ def test_geometry_edit_revokes_old_approval_but_explicit_reapproval_survives(mon
     assert len(saved) == 2
 
 
+def test_removing_collision_revokes_approval_until_new_observation(monkeypatch, tmp_path):
+    saved = []
+    config = drive_policy()
+    monkeypatch.setenv("RIDER_NAVIGATION_CONFIG", str(tmp_path / "navigation.json"))
+    monkeypatch.setattr(navigation_config, "snapshot", lambda: deepcopy(config))
+    monkeypatch.setattr(navigation_config, "_require_configuration_goals_stopped", lambda *_: None)
+    monkeypatch.setattr(navigation_config, "_write", lambda _path, value: saved.append(value))
+    avoidance = deepcopy(config["avoidance"])
+    avoidance["geometry"].pop("collision")
+    changed = navigation_config.configure_locked(
+        {
+            "revision": config["revision"],
+            "values": {
+                "avoidance": avoidance,
+                "verified": True,
+                "calibration_id": "unseen-legacy-geometry",
+            },
+        }
+    )
+    assert changed["mode"] == "observe"
+    assert changed["verified"] is False
+    assert changed["avoidance"]["sweep_verified"] is False
+    config = changed
+    approved = navigation_config.configure_locked(
+        {
+            "revision": config["revision"],
+            "values": {
+                "verified": True,
+                "calibration_id": "new-observed-legacy",
+                "avoidance": {**deepcopy(config["avoidance"]), "sweep_verified": True},
+            },
+        }
+    )
+    assert approved["verified"] is True
+    assert approved["avoidance"]["sweep_verified"] is True
+    assert len(saved) == 2
+
+
+@pytest.mark.parametrize("code", ["navigation_collision_update_required", "navigation_guidance_update_required"])
+def test_trial_preserves_required_host_update_code(code):
+    from apps.compute.client import ComputeError
+    from services.navigation_trial import TrialError
+    from services.navigation_trial_preparation import TrialPreparation
+
+    with pytest.raises(TrialError) as caught:
+        TrialPreparation._raise_failure(None, ComputeError(code, 409), {"stage": "stream_prepare"})
+    assert caught.value.code == code and caught.value.status == 409
+    assert caught.value.details["preparation"]["stage"] == "stream_prepare"
+
+
+def test_paired_replay_rejects_a_decision_received_after_capture_deadline():
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    config = drive_policy()
+    decision = command(config, action="go")
+    fixture = Path(__file__).parent / "fixtures/replay_collision_lease.py"
+    result = subprocess.run(
+        [sys.executable, str(fixture)],
+        input=json.dumps(
+            {
+                "config": config,
+                "replies": [
+                    {"decision": decision, "captured": 0.0, "received_monotonic": 0.31},
+                ],
+            }
+        ),
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=15,
+    )
+    received = json.loads(result.stdout)
+    assert received["latched"] is True
+    assert received["outputs"] == [["halt"]]
+
+
 def test_crop_cannot_hide_independent_floor_reference():
     config = policy()
     config["avoidance"]["geometry"]["collision"]["reference_corridor"] = [0.2, 0.5, 0.8, 0.95]

@@ -8,6 +8,7 @@ FIELDS = {"version", "far_width_ratio", "left_shift", "right_shift", "end_fracti
 
 
 def selection(config):
+    """Extract optional collision geometry without assuming nested policy types."""
     value = config
     for key in ("avoidance", "geometry", "collision"):
         if not isinstance(value, dict):
@@ -17,6 +18,7 @@ def selection(config):
 
 
 def validate(value, corridor):
+    """Validate the image envelope and its floor-reference support."""
     if (
         not isinstance(value, dict)
         or not FIELDS <= set(value)
@@ -60,6 +62,7 @@ def validate(value, corridor):
 
 
 def proof(config):
+    """Digest normalized collision geometry and the exact configured corridor."""
     value = selection(config)
     validate(value, config["corridor"])
     normalized = {key: float(value[key]) for key in FIELDS - {"version", "reference_corridor"}}
@@ -74,6 +77,7 @@ def proof(config):
 
 
 def evidence_valid(config, decision):
+    """Independently check geometry identity and required directional evidence."""
     from services.axis_guidance import evidence_valid as guidance_valid
 
     actual = decision.get("collision_geometry")
@@ -98,6 +102,7 @@ def evidence_valid(config, decision):
 
 
 def path_valid(decision, name, *, require_clear=True):
+    """Require sufficient, fully observed pixels and optionally a clear path."""
     paths = decision.get("paths")
     row = paths.get(name) if isinstance(paths, dict) else None
     return (
@@ -111,6 +116,7 @@ def path_valid(decision, name, *, require_clear=True):
 
 
 def require_host(status, version):
+    """Reject a requested collision contract unsupported by the host."""
     from apps.compute.client import ComputeError
 
     if version is not None and (
@@ -123,6 +129,7 @@ def require_host(status, version):
 
 
 def preparation_options(config):
+    """Request all collision-related capabilities required by this policy."""
     from services.axis_guidance import selection as guidance
 
     options = {"collision_geometry_version": 1} if selection(config) is not None else {}

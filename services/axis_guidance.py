@@ -7,6 +7,7 @@ MODES = {"rotate_then_drive", "steer", "auto"}
 
 
 def selection(config):
+    """Extract optional guidance from the Pi-owned collision configuration."""
     from services.collision_geometry import selection as collision
 
     value = collision(config)
@@ -14,6 +15,7 @@ def selection(config):
 
 
 def validate(value, corridor):
+    """Validate and normalize the complete guidance configuration."""
     if (
         not isinstance(value, dict)
         or set(value) != FIELDS
@@ -45,6 +47,7 @@ def validate(value, corridor):
 
 
 def require_ready(config):
+    """Require a visible, calibrated rotation envelope for rotation-only drive."""
     value = selection(config)
     if (
         config.get("mode") == "drive"
@@ -70,11 +73,13 @@ def require_ready(config):
 
 
 def allows_turn(config):
+    """Allow in-place turns only for a configured mode with its own envelope."""
     value = selection(config)
     return value is not None and value["motion_mode"] != "steer" and value["rotation_bounds"] is not None
 
 
 def evidence_valid(config, decision):
+    """Check that the decision uses the configured mode and rotation evidence."""
     value = selection(config)
     if value is None:
         return "guidance" not in decision
@@ -94,6 +99,7 @@ def evidence_valid(config, decision):
 
 
 def require_host(status, version):
+    """Reject a requested guidance contract unsupported by the host."""
     from apps.compute.client import ComputeError
 
     if version is not None and (

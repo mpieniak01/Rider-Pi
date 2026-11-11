@@ -363,7 +363,7 @@ def configure_locked(body):
         engine_changed = _apply_perception_changes(old, proposed)
         from services.collision_geometry import selection
 
-        if selection(proposed) is not None and any(
+        if (selection(old) is not None or selection(proposed) is not None) and any(
             proposed[key] != old[key] for key in ("corridor", "speed", "max_motion_ms", "avoidance")
         ):
             # A changed envelope or pulse must be observed before its new approval.
@@ -371,7 +371,8 @@ def configure_locked(body):
 
             if not approval_only(old, proposed):
                 proposed.update(verified=False, mode="observe")
-                proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
+                if isinstance(proposed["avoidance"], dict):
+                    proposed["avoidance"] = {**proposed["avoidance"], "sweep_verified": False}
         changed = any(
             proposed[k] != old[k]
             for k in (

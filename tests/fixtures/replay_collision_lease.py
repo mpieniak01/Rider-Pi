@@ -25,7 +25,7 @@ def main():
         journey=data.get("journey"),
     )
     for row in data["replies"]:
-        now[0] = row["captured"]
+        now[0] = row.get("received_monotonic", row["captured"])
         decision = row["decision"]
         lease.accept(decision, decision["frame_id"], decision["sequence"], row["captured"])
     print(

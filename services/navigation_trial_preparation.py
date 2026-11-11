@@ -509,6 +509,8 @@ class TrialPreparation:
         if isinstance(error, ComputeError) and error.code in {
             "navigation_journey_update_required",
             "navigation_input_region_update_required",
+            "navigation_collision_update_required",
+            "navigation_guidance_update_required",
         }:
             raise TrialError(error.code, 409, details={"preparation": diagnostic}) from error
         known = {
