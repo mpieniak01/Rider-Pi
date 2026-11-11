@@ -64,6 +64,9 @@ The new planner counts three qualified current path observations, preserves the
 chosen-side and bounded-correction policy, and rejects a mismatched geometry
 proof. The Pi permit independently checks the matching proof, forward coverage,
 clear near guard and selected path. Legacy permits still require clear sectors.
+For GO or SLOW the Pi also requires the forward path itself to be clear; a
+temporal SLOW cannot override a blocked collision corridor. The panel applies
+the same path-state and minimum observed-pixel checks before showing permission.
 An unsolicited new proof on a legacy policy is rejected. STOP remains available
 without a positive proof. Startup, cold preparation and warm reuse negotiate
 the capability before motion authority.

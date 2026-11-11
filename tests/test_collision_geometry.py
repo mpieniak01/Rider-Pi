@@ -100,6 +100,39 @@ def test_device_uses_maneuver_proof_instead_of_unrelated_side_rectangles():
     assert outputs == [("steer", "left", 0.1)]
 
 
+def test_go_cannot_contradict_a_blocked_forward_path():
+    config, outputs = drive_policy(), []
+    decision = command(config, action="go")
+    decision["paths"]["center"]["state"] = "obstacle"
+    assert not lease(config, outputs).accept(decision, "f1", 1, 0.0)
+    assert outputs == [("halt",)]
+
+
+@pytest.mark.parametrize("path_state,accepted", [("obstacle", False), ("clear", True)])
+def test_slow_requires_a_clear_forward_path(path_state, accepted):
+    from services.navigation_profiles import parameters, policy_digest
+
+    config, outputs = drive_policy(), []
+    config["behavior"] = {"version": 1, "profile_id": "fluid", "profile_revision": 1}
+    decision = command(config, action="slow")
+    decision.update(
+        state="obstacle",
+        behavior=config["behavior"],
+        effective_policy_sha256=policy_digest(config["behavior"], config["perception"]),
+        temporal={
+            "version": 1,
+            "action": "slow",
+            "risk": "caution",
+            "near_guard_clear": True,
+            "evidence_frames": 3,
+            "speed_factor": parameters(config["behavior"], config["perception"])["slow_speed_factor"],
+        },
+    )
+    decision["paths"]["center"]["state"] = path_state
+    assert lease(config, outputs).accept(decision, "f1", 1, 0.0) is accepted
+    assert outputs[0][0] == ("go" if accepted else "halt")
+
+
 @pytest.mark.parametrize("action", ["go", "steer_left"])
 @pytest.mark.parametrize(
     "fault",

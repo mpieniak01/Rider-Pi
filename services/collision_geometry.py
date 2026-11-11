@@ -85,7 +85,11 @@ def evidence_valid(config, decision):
             and type(actual.get("version")) is int
             and actual == proof(config)
             and decision.get("geometry") == "image_collision_corridor"
-            and path_valid(decision, "center", require_clear=False)
+            and path_valid(
+                decision,
+                "center",
+                require_clear=decision.get("action") in {"go", "slow"},
+            )
             and path_valid(decision, "guard")
             and guidance_valid(config, decision)
         )
