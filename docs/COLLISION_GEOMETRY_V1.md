@@ -210,3 +210,35 @@ Pi targeted checks include both `tests/test_collision_geometry.py` and
 `tests/test_axis_guidance.py`, followed by navigation and journey regressions.
 The isolated browser fixture verifies rotation calibration, mode selection
 and the blocked-start state. These checks do not connect to or drive the robot.
+
+## Use the saved camera reference for the collision corridor
+
+The existing navigation settings offer “Derive corridor from saved reference”.
+The action reads the Pi-owned image reference at that moment; it requires a
+saved revision and valid values, and never silently substitutes visual defaults.
+It uses the reference's robot width and both measured track edges, and adds a
+1 cm lateral margin on each side. At the top and bottom of the current corridor
+it interpolates between the reference edge rows. The tapered forward envelope
+contains the projected body and margin across the entire interval, including
+the configured terminal-footprint portion; this avoids treating the maximum
+near width as necessary at every distance. It never extrapolates beyond
+measured rows or clips an out-of-frame envelope into a clear one. It derives
+`far_width_ratio`; curved-path shifts and the independent rotation rectangle
+are preserved. The floor fitting reference is expanded as needed and is not
+narrowed.
+
+The dimensions and original 14 cm camera height belong to the recorded
+lowest-pose reference. The calculation uses the measured image edges and the
+width/track ratio; camera height and distance markers are reference context,
+not a metric depth sensor. A different camera crop or pose is not automatically
+detected by this conversion. Check alignment using the current source image and
+the existing observation workflow. A changed corridor returns the draft to
+observation and revokes existing acceptance; an incompatible saved rotation
+rectangle prevents saving until corrected. The action reads only and changes
+the local draft; saving uses the existing stopped and revisioned configuration
+transaction. It neither starts nor authorizes motion.
+
+The corridor is a snapshot derived from the saved reference, not a live binding:
+after editing the reference, explicitly derive it again. Missing or invalid
+reference data leave the draft unchanged. Physical camera blind spots and the
+independent rotation sweep are not inferred from a two-dimensional reference.
