@@ -71,12 +71,12 @@ class Repositories:
         helper = runpy.run_path(str(SCRIPT))
         payload = helper["_ssh_payload"](request, bundle)
         with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
-            device_helper = self.directory / "deploy.py"
-            device_helper.write_bytes(archive.extractfile("deploy.py").read())
+            # Preserve the source path used by subprocess coverage.
+            assert archive.extractfile("deploy.py").read() == SCRIPT.read_bytes()
             request_json = archive.extractfile("request.json").read().decode()
             bundle_bytes = archive.extractfile("preview.bundle").read()
         result = subprocess.run(
-            [sys.executable, str(device_helper), "_remote", request_json],
+            [sys.executable, str(SCRIPT), "_remote", request_json],
             input=bundle_bytes,
             capture_output=True,
         )
