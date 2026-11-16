@@ -5,7 +5,6 @@ import json
 import runpy
 import subprocess
 import sys
-import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -68,16 +67,15 @@ class Repositories:
             "commit": commit,
             "restart_api": False,
         }
-        helper = runpy.run_path(str(SCRIPT))
-        payload = helper["_ssh_payload"](request, bundle)
-        with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
-            # Preserve the source path used by subprocess coverage.
-            assert archive.extractfile("deploy.py").read() == SCRIPT.read_bytes()
-            request_json = archive.extractfile("request.json").read().decode()
-            bundle_bytes = archive.extractfile("preview.bundle").read()
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), "_remote", request_json],
-            input=bundle_bytes,
+            [
+                sys.executable,
+                "-c",
+                "exec(compile(" + repr(SCRIPT.read_text()) + ", " + repr(str(SCRIPT)) + ", 'exec'))",
+                "_remote",
+                json.dumps(request),
+            ],
+            input=bundle,
             capture_output=True,
         )
         if check:
@@ -118,6 +116,20 @@ def test_preview_update_rollback_and_repeat_preserve_main_and_local_config(repos
     repos.deploy("preview", second, bundle)
     repos.deploy("rollback")
     repos.assert_base()
+
+
+def test_release_refuses_preview_record_with_invalid_base(repos):
+    candidate, bundle = repos.candidate()
+    repos.deploy("preview", candidate, bundle)
+    record_path = repos.device / ".git/rider-preview.json"
+    record = json.loads(record_path.read_text())
+    record["base"] = "--help"
+    record_path.write_text(json.dumps(record))
+
+    error = repos.deploy("release", candidate, check=False)
+    assert "Saved main changed" in error
+    assert repos.command(repos.device, "rev-parse", "HEAD") == candidate
+    assert repos.command(repos.device, "rev-parse", "refs/heads/main") == repos.base
 
 
 def test_release_accepts_reviewed_squash_with_identical_tree(repos):

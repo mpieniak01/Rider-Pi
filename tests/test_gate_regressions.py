@@ -207,29 +207,29 @@ def test_invalid_lcd_lease_is_unconfirmed_without_attempting_power_control(tmp_p
     assert result["error"] == "lcd_owned_or_unknown"
 
 
-def test_ssh_payload_keeps_device_path_and_bundle_as_data(tmp_path, monkeypatch):
-    import io
+def test_ssh_payload_keeps_device_path_as_one_quoted_json_argument(tmp_path, monkeypatch):
     import json
-    import tarfile
+    import shlex
 
     deploy = load("scripts/dev_pi-deploy.py")
     env_file = tmp_path / "ssh.env"
     env_file.touch(mode=0o600)
     monkeypatch.setattr(deploy, "run", lambda *a, **kw: SimpleNamespace(stdout="localhost\npi\n22\n"))
-    path = str(tmp_path / "device's $(touch must-not-exist)")
-    request = {"action": "preview", "repo": path}
-    bundle = b"\x00\xff\n"
+    captured = []
 
-    def fake_ssh(args, *, input, **kwargs):
-        assert args[-1] == deploy.REMOTE_DEPLOY
-        assert path not in args[-1]
-        with tarfile.open(fileobj=io.BytesIO(input)) as archive:
-            assert json.load(archive.extractfile("request.json")) == request
-            assert archive.extractfile("preview.bundle").read() == bundle
+    def fake_ssh(args, **kwargs):
+        captured.append(args)
         return SimpleNamespace(returncode=0, stdout=b'{"ok":true}', stderr=b"")
 
     monkeypatch.setattr(deploy.subprocess, "run", fake_ssh)
-    assert deploy.ssh(env_file, request, bundle) == {"ok": True}
+    path = str(tmp_path / "device's $(touch must-not-exist)")
+    request = {"action": "status", "repo": path}
+    assert deploy.ssh(env_file, request, b"") == {"ok": True}
+    arguments = shlex.split(captured[0][-1])
+    assert arguments[:2] == ["python3", "-c"]
+    assert arguments[-2] == "_remote"
+    assert json.loads(arguments[-1]) == request
+    assert not (tmp_path / "must-not-exist").exists()
 
 
 def test_diagnostic_rejects_unapproved_cli_target_before_building_a_network_opener(monkeypatch):
