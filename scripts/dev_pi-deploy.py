@@ -439,7 +439,8 @@ def rollback(repo, record_path):
     if not record:
         raise RuntimeError("There is no active preview to roll back.")
     current, branch = git(repo, "rev-parse", "HEAD"), git(repo, "branch", "--show-current")
-    if git(repo, "rev-parse", record["branch"]) != record["base"]:
+    base = git(repo, "rev-parse", "--verify", "refs/heads/main^{commit}")
+    if record["branch"] != "main" or base != record["base"]:
         raise RuntimeError("Saved main changed; preserve it before rollback.")
     if record.get("restart_motion") and current == record["commit"] and branch == record["preview_branch"]:
         motion_update_preflight()
@@ -448,8 +449,8 @@ def rollback(repo, record_path):
         resource_preflight()
         pause_resources()
     if current == record["commit"] and branch == record["preview_branch"]:
-        git(repo, "switch", record["branch"])
-    elif current != record["base"] or branch != record["branch"]:
+        git(repo, "switch", "main")
+    elif current != base or branch != "main":
         raise RuntimeError("Device checkout no longer matches the preview record.")
     if record.get("restart_motion"):
         run(["sudo", "-n", "systemctl", "start", MOTION_SERVICE])

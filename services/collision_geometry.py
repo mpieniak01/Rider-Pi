@@ -40,7 +40,7 @@ def validate(value, corridor):
     if (
         not isinstance(reference, list)
         or len(reference) != 4
-        or any(type(v) not in (int, float) or (type(v) is float and not math.isfinite(v)) for v in reference)
+        or any(type(v) not in (int, float) or not -math.inf < v < math.inf for v in reference)
     ):
         raise ValueError("navigation_collision_geometry_invalid")
     a, b, c, d = reference

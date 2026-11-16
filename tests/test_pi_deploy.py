@@ -132,6 +132,21 @@ def test_release_refuses_preview_record_with_invalid_base(repos):
     assert repos.command(repos.device, "rev-parse", "refs/heads/main") == repos.base
 
 
+def test_rollback_refuses_preview_record_with_unexpected_destination(repos):
+    candidate, bundle = repos.candidate()
+    repos.deploy("preview", candidate, bundle)
+    repos.command(repos.device, "branch", "alternate", repos.base)
+    record_path = repos.device / ".git/rider-preview.json"
+    record = json.loads(record_path.read_text())
+    record["branch"] = "alternate"
+    record_path.write_text(json.dumps(record))
+
+    error = repos.deploy("rollback", check=False)
+    assert "Saved main changed" in error
+    assert repos.command(repos.device, "rev-parse", "HEAD") == candidate
+    assert record_path.exists()
+
+
 def test_release_accepts_reviewed_squash_with_identical_tree(repos):
     """Accept a reviewed squash whose file tree matches the tested preview."""
     candidate, bundle = repos.candidate()

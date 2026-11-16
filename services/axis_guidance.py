@@ -33,7 +33,7 @@ def validate(value, corridor):
         if (
             not isinstance(bounds, list)
             or len(bounds) != 4
-            or any(type(v) not in (int, float) or (type(v) is float and not math.isfinite(v)) for v in bounds)
+            or any(type(v) not in (int, float) or not -math.inf < v < math.inf for v in bounds)
         ):
             raise ValueError("navigation_rotation_geometry_invalid")
         a, b, c, d = bounds
