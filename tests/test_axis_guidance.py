@@ -30,6 +30,17 @@ def reply(config, action="turn_right", sequence=1):
     return result
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [{"center_deadband": 10**400}, {"rotation_bounds": [0.2, 0.88, 10**400, 0.95]}],
+)
+def test_out_of_range_guidance_numbers_are_configuration_errors(changes):
+    config = guided()
+    config["avoidance"]["geometry"]["collision"]["guidance"].update(changes)
+    with pytest.raises(ValueError, match="navigation_(guidance|rotation_geometry)"):
+        navigation_config.validate(config)
+
+
 def test_device_accepts_guidance_configuration():
     assert navigation_config.validate(guided()) == guided()
 

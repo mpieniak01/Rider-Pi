@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import json
 import os
 import re
@@ -12,6 +13,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -24,6 +26,12 @@ API_SERVICE = "rider-api.service"
 DISPLAY_SERVICE = "lcd-renderer.service"
 MOTION_SERVICE = "motion-executor.service"
 REMOTE_MAIN = "origin/main"
+REMOTE_DEPLOY = """set -eu
+workdir=$(mktemp -d)
+trap 'rm -rf -- "$workdir"' EXIT
+tar -xf - -C "$workdir" -- deploy.py request.json preview.bundle
+python3 "$workdir/deploy.py" _remote "$(cat "$workdir/request.json")" < "$workdir/preview.bundle"
+"""
 
 # Explicit resource update scope; never a blanket driver/systemd bypass.
 RESOURCE_PATHS = frozenset(
@@ -549,6 +557,22 @@ def remote(request):
         lock.unlink()
 
 
+def _ssh_payload(request, bundle):
+    """Send the helper, request and binary bundle as separate archive members."""
+    payload = io.BytesIO()
+    with tarfile.open(fileobj=payload, mode="w") as archive:
+        for name, data in (
+            ("deploy.py", Path(__file__).read_bytes()),
+            ("request.json", json.dumps(request).encode()),
+            ("preview.bundle", bundle),
+        ):
+            entry = tarfile.TarInfo(name)
+            entry.size = len(data)
+            entry.mode = 0o600
+            archive.addfile(entry, io.BytesIO(data))
+    return payload.getvalue()
+
+
 def ssh(env_file, request, bundle):
     """Send source, request and bundle using the locally configured SSH password."""
     if not env_file.is_file() or env_file.stat().st_mode & 0o077:
@@ -573,8 +597,6 @@ def ssh(env_file, request, bundle):
         or not 1 <= int(port) <= 65535
     ):
         raise RuntimeError("Invalid SSH destination.")
-    source = Path(__file__).read_text()
-    command = shlex.join(["python3", "-c", source, "_remote", json.dumps(request)])
     with tempfile.TemporaryDirectory(prefix="rider-ssh-") as directory:
         askpass = Path(directory) / "askpass"
         askpass.write_text("#!/bin/bash\nsource " + shlex.quote(str(env_file)) + '\nprintf "%s\\n" "$SSH_PASSWORD"\n')
@@ -596,9 +618,11 @@ def ssh(env_file, request, bundle):
             "-o",
             "NumberOfPasswordPrompts=1",
             f"{user}@{host}",
-            command,
+            REMOTE_DEPLOY,
         ]
-        result = subprocess.run(args, input=bundle, capture_output=True, env=environment, timeout=120)
+        result = subprocess.run(
+            args, input=_ssh_payload(request, bundle), capture_output=True, env=environment, timeout=120
+        )
         if result.returncode:
             raise RuntimeError(result.stderr.decode().strip() or "Device deployment failed.")
         return json.loads(result.stdout)

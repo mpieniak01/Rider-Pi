@@ -34,18 +34,13 @@ def validate(value, corridor):
         ("end_fraction", 0.05, 0.5),
     ):
         v = value[key]
-        if (
-            type(v) not in (int, float)
-            or not math.isfinite(v)
-            or not low <= v <= high
-            or (key == "far_width_ratio" and v == 0)
-        ):
+        if type(v) not in (int, float) or not low <= v <= high or (key == "far_width_ratio" and v == 0):
             raise ValueError("navigation_collision_geometry_invalid")
     reference = value["reference_corridor"]
     if (
         not isinstance(reference, list)
         or len(reference) != 4
-        or any(type(v) not in (int, float) or not math.isfinite(v) for v in reference)
+        or any(type(v) not in (int, float) or (type(v) is float and not math.isfinite(v)) for v in reference)
     ):
         raise ValueError("navigation_collision_geometry_invalid")
     a, b, c, d = reference

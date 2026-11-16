@@ -36,6 +36,8 @@ def test_device_accepts_explicit_envelopes_without_starting_motion():
         {"version": 2},
         {"far_width_ratio": 0},
         {"right_shift": float("nan")},
+        {"left_shift": 10**400},
+        {"reference_corridor": [0.2, 0.5, 10**400, 0.95]},
         {"end_fraction": 0},
         {"reference_corridor": [0.4, 0.9, 0.6, 0.95]},
         {"unexpected": 1},

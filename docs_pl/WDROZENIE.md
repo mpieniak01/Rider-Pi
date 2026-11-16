@@ -17,6 +17,8 @@ pełny zestaw testów nie jest warunkiem każdej krótkiej iteracji. Wynik sprz�
 potwierdzamy na Pi. Narzędzie `scripts/dev_pi-deploy.py` używa istniejących
 Git, SSH i biblioteki standardowej Pythona. Czyta lokalny `evn.ssh.local`
 z uprawnieniami `600`; hasło nie trafia do argumentów procesu ani do paczki.
+Przez SSH przesyła skrypt, żądanie i paczkę Git w archiwum tar. Pi rozpakowuje
+je do prywatnego katalogu tymczasowego i usuwa po zakończeniu polecenia.
 
 ## Krótka ścieżka: podgląd i test na Pi
 

@@ -26,14 +26,14 @@ def validate(value, corridor):
     if not isinstance(value["motion_mode"], str) or value["motion_mode"] not in MODES:
         raise ValueError("navigation_guidance_invalid")
     deadband = value["center_deadband"]
-    if type(deadband) not in (int, float) or not math.isfinite(deadband) or not 0 <= deadband <= 0.25:
+    if type(deadband) not in (int, float) or not 0 <= deadband <= 0.25:
         raise ValueError("navigation_guidance_invalid")
     bounds = value["rotation_bounds"]
     if bounds is not None:
         if (
             not isinstance(bounds, list)
             or len(bounds) != 4
-            or any(type(v) not in (int, float) or not math.isfinite(v) for v in bounds)
+            or any(type(v) not in (int, float) or (type(v) is float and not math.isfinite(v)) for v in bounds)
         ):
             raise ValueError("navigation_rotation_geometry_invalid")
         a, b, c, d = bounds
@@ -63,7 +63,7 @@ def require_ready(config):
                 not isinstance(region, dict)
                 or not isinstance(region.get("bounds"), list)
                 or len(region["bounds"]) != 4
-                or any(type(v) not in (int, float) or not math.isfinite(v) for v in region["bounds"])
+                or any(type(v) not in (int, float) or not 0 <= v <= 1 for v in region["bounds"])
             ):
                 raise ValueError("navigation_rotation_input_incomplete")
             a, b, c, d = region["bounds"]

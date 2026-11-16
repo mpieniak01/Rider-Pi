@@ -5,6 +5,7 @@ import json
 import runpy
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -67,15 +68,16 @@ class Repositories:
             "commit": commit,
             "restart_api": False,
         }
+        helper = runpy.run_path(str(SCRIPT))
+        payload = helper["_ssh_payload"](request, bundle)
+        with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
+            device_helper = self.directory / "deploy.py"
+            device_helper.write_bytes(archive.extractfile("deploy.py").read())
+            request_json = archive.extractfile("request.json").read().decode()
+            bundle_bytes = archive.extractfile("preview.bundle").read()
         result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "exec(compile(" + repr(SCRIPT.read_text()) + ", " + repr(str(SCRIPT)) + ", 'exec'))",
-                "_remote",
-                json.dumps(request),
-            ],
-            input=bundle,
+            [sys.executable, str(device_helper), "_remote", request_json],
+            input=bundle_bytes,
             capture_output=True,
         )
         if check:
